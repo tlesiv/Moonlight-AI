@@ -60,6 +60,7 @@ fun saveChats(sessions: List<ChatSession>) {
             }
         }
     }
+
     Files.write(path, lines, StandardCharsets.UTF_8)
 }
 
