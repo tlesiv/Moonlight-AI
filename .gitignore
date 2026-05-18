@@ -32,3 +32,6 @@ bin/
 .DS_Store
 
 .env
+.gradle/
+build/
+.idea/
