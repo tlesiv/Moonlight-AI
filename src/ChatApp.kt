@@ -79,7 +79,6 @@ fun ChatApp() {
     val onTogglePin = { session: ChatSession ->
         val index = sessions.indexOfFirst { it.id == session.id }
         if (index != -1) {
-            // Оновлюємо статус і примусово кажемо Compose перемалювати список
             sessions[index] = session.copy(isPinned = !session.isPinned)
             saveChats(sessions)
         }
@@ -138,31 +137,25 @@ fun ChatApp() {
                     }
                 }
 
-                // 1. Створюємо пусте повідомлення ШІ, яке буде наповнюватися на екрані
                 val assistantMessage = newMessage("assistant", "")
                 messages.add(assistantMessage)
                 saveChats(sessions)
 
                 var currentText = ""
 
-                // 2. Запускаємо стрім через твій HttpClient у IO-потоці
                 val result = withContext(Dispatchers.IO) {
-                    // Передаємо історію без останнього пустого повідомлення асистента
                     callGeminiStream(apiKey = apiKey, model = model, history = messages.dropLast(1)) { chunk ->
                         currentText += chunk
 
-                        // 3. Повертаємося на головний потік, щоб оновити інтерфейс Compose Desktop
                         withContext(Dispatchers.Main) {
                             val index = messages.indexOfFirst { it.id == assistantMessage.id }
                             if (index != -1) {
-                                // Робимо копію з новим текстом, щоб Compose зафіксував зміни
                                 messages[index] = messages[index].copy(text = currentText)
                             }
                         }
                     }
                 }
 
-                // Якщо сталася помилка під час стріму — виводимо її
                 if (result.isFailure) {
                     val message = result.exceptionOrNull()?.message ?: "Unknown error"
                     errorText = message
@@ -218,7 +211,6 @@ fun ChatApp() {
             }
         }
     }
-    // Діалогове вікно "Змінити назву"
     if (chatToRename != null) {
         var newTitle by remember { mutableStateOf(chatToRename!!.title) }
         AlertDialog(
@@ -275,7 +267,6 @@ private fun Sidebar(
     var hoveredChatId by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.background(Color.Black).padding(16.dp)) {
-        // Заголовок та кнопка "New chat" залишаються закріпленими зверху
         Text(text = "Chats", fontWeight = FontWeight.SemiBold, color = Color.White)
         Spacer(modifier = Modifier.height(12.dp))
         Button(
@@ -292,7 +283,6 @@ private fun Sidebar(
         }
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Box для списку та скроллбару
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             val listState = rememberLazyListState()
 
@@ -307,7 +297,7 @@ private fun Sidebar(
                     val borderColor = if (isActive) Color(0xFF2F3336) else Color.Transparent
                     val isHovered = hoveredChatId == session.id
 
-                    // 1. СТАН ДЛЯ МЕНЮ: Чи відкрите зараз меню для цього конкретного чату?
+
                     var menuExpanded by remember { mutableStateOf(false) }
 
                     Row(
@@ -334,7 +324,7 @@ private fun Sidebar(
                             },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
-                    ) {// Блок з назвою та іконкою закріплення (щоб було видно, що чат закріплено)
+                    ) {
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             if (session.isPinned) {
                                 Icon(
@@ -367,7 +357,6 @@ private fun Sidebar(
                                     )
                                 }
 
-                                // ДИЗАЙН МЕНЮ ЯК НА СКРІНШОТІ
                                 MaterialTheme(
                                     colors = MaterialTheme.colors.copy(surface = Color(0xFF2B2D31)), // Темно-сірий фон меню
                                     shapes = MaterialTheme.shapes.copy(medium = RoundedCornerShape(12.dp)) // Закруглені краї
@@ -376,7 +365,7 @@ private fun Sidebar(
                                     onDismissRequest = { menuExpanded = false },
                                     modifier = Modifier.border(1.dp, Color(0xFF3F4147), RoundedCornerShape(12.dp)).width(200.dp)
                                 ) {
-                                    // 1. Змінити назву
+                                    // Rename
                                     DropdownMenuItem(onClick = {
                                         menuExpanded = false
                                         onRenameChat(session)
@@ -386,7 +375,7 @@ private fun Sidebar(
                                         Text("Rename", color = Color.White, fontSize = 14.sp)
                                     }
 
-                                    // 2. Закріпити
+                                    // Pin/Unpin
                                     DropdownMenuItem(onClick = {
                                         menuExpanded = false
                                         onTogglePin(session)
@@ -403,7 +392,7 @@ private fun Sidebar(
                                         Text(text, color = Color.White, fontSize = 14.sp)
                                     }
 
-                                    // 3. Видалити
+                                    // Delete
                                     DropdownMenuItem(onClick = {
                                         menuExpanded = false
                                         onDeleteChat(session.id)
@@ -420,7 +409,7 @@ private fun Sidebar(
                     }
                 }}
 
-            // Кастомний повзунок у стилі Grok
+
             CompositionLocalProvider(
                 LocalScrollbarStyle provides defaultScrollbarStyle().copy(
                     unhoverColor = Color(0xFF2F3336), // Колір у спокої
@@ -509,19 +498,18 @@ private fun SingleColumnChat(
                 enabled = !isLoading && input.isNotBlank(),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color.White,             // Колір активної кнопки (білий)
-                    contentColor = Color.Black,                // Колір тексту активної кнопки (чорний)
+                    backgroundColor = Color.White,             // Колір активної кнопки
+                    contentColor = Color.Black,                // Колір тексту активної кнопки
                     disabledBackgroundColor = Color(0xFFFFFFF), // Колір кнопки ПІД ЧАС ЗАВАНТАЖЕННЯ (темно-сірий)
                     disabledContentColor = Color(0xFF71767B)     // Колір контенту неактивної кнопки
                 ),
                 elevation = ButtonDefaults.elevation(0.dp)
             ) {
-                if (isLoading) {
-                    // Задаємо кастомний колір для крутилки (спінера)
+                if (isLoading) {//Колір крутілки завантаження
                     CircularProgressIndicator(
-                        color = Color(0xFF71767B), // Світло-сірий колір, який пасуватиме до темно-сірої кнопки
+                        color = Color(0xFF71767B),
                         modifier = Modifier.width(18.dp).height(18.dp),
-                        strokeWidth = 2.dp // Робимо лінію трохи тоншою для елегантності
+                        strokeWidth = 2.dp
                     )
                 } else {
                     Text("Send", fontWeight = FontWeight.Bold)

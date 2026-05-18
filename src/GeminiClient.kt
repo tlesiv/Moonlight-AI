@@ -77,7 +77,6 @@ suspend fun callGeminiStream(
     history: List<ChatMessage>,
     onChunk: suspend (String) -> Unit
 ): Result<Unit> {
-    // Змінюємо метод на streamGenerateContent
     val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey"
 
     val contents = history.joinToString(prefix = "[", postfix = "]") { message ->
@@ -98,7 +97,6 @@ suspend fun callGeminiStream(
             return Result.failure(IllegalStateException("HTTP ${response.statusCode()}"))
         }
 
-        // Читаємо потік сервера рядок за рядком в реальному часі
         val reader = BufferedReader(InputStreamReader(response.body(), StandardCharsets.UTF_8))
         val regex = Regex("\"text\"\\s*:\\s*\"(.*?)\"")
 
@@ -108,7 +106,7 @@ suspend fun callGeminiStream(
             val match = regex.find(currentLine)
             if (match != null) {
                 val textChunk = unescapeJson(match.groupValues[1])
-                onChunk(textChunk) // Віддаємо шматочок тексту в UI
+                onChunk(textChunk)
             }
         }
         Result.success(Unit)
