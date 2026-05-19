@@ -1,3 +1,5 @@
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -45,6 +47,14 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.animation.*
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 val borderColor = Color(0xFF2F3336)
 
@@ -63,6 +73,7 @@ fun ChatApp() {
     var isLoading by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    var expandedMenuChatId by remember { mutableStateOf<String?>(null) }
 
 
     val activeChat = sessions.first { it.id == activeChatId }
@@ -170,45 +181,86 @@ fun ChatApp() {
             }
         }
     }
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         val isNarrow = maxWidth < 700.dp
+
+        val currentActiveChat = sessions.firstOrNull { it.id == activeChatId }
+
         if (isNarrow) {
-            SingleColumnChat(
-                messages = messages,
-                input = input,
-                onInputChange = { input = it },
-                onSend = onSend,
-                isLoading = isLoading,
-                errorText = errorText
-            )
+            Crossfade(
+                targetState = currentActiveChat,
+                animationSpec = tween(durationMillis = 500),
+                label = "chat_transition"
+            ) { chat ->
+                if (chat != null) {
+                    SingleColumnChat(
+                        messages = chat.messages,
+                        input = input,
+                        onInputChange = { input = it },
+                        onSend = onSend,
+                        isLoading = isLoading,
+                        errorText = errorText
+                    )
+                }
+            }
         } else {
             Row(modifier = Modifier.fillMaxSize()) {
                 Sidebar(
-                    chats = sessions.sortedByDescending { it.isPinned }, // Закріплені чати будуть завжди зверху!
+                    chats = sessions.sortedByDescending { it.isPinned },
                     activeChatId = activeChatId,
                     onSelectChat = onSelectChat,
+                    expandedMenuChatId = expandedMenuChatId,
+                    onSetExpandedMenuChatId = { expandedMenuChatId = it },
                     onNewChat = onNewChat,
                     onDeleteChat = onDeleteChat,
-                    onRenameChat = { chatToRename = it }, // ДОДАНО
-                    onTogglePin = onTogglePin,            // ДОДАНО
+                    onRenameChat = { chatToRename = it },
+                    onTogglePin = onTogglePin,
                     modifier = Modifier.width(240.dp).fillMaxHeight()
                 )
                 Divider(
                     color = borderColor,
                     modifier = Modifier
-                    .fillMaxHeight()
-                    .width(1.dp))
-                SingleColumnChat(
-                    messages = messages,
-                    input = input,
-                    onInputChange = { input = it },
-                    onSend = onSend,
-                    modifier = Modifier.weight(1f),
-                    isLoading = isLoading,
-                    errorText = errorText
+                        .fillMaxHeight()
+                        .width(1.dp)
                 )
-            }
+
+                Crossfade(
+                    targetState = currentActiveChat,
+                    modifier = Modifier.weight(1f),
+                    animationSpec = tween(durationMillis = 500),//Анімація при зміні чатів(список чатів)
+                    label = "chat_transition"
+                ) { chat ->
+                    if (chat != null) {
+                        SingleColumnChat(
+                            messages = chat.messages,
+                            input = input,
+                            onInputChange = { input = it },
+                            onSend = onSend,
+                            modifier = Modifier.fillMaxSize(),
+                            isLoading = isLoading,
+                            errorText = errorText
+                        )
+
+                        if (expandedMenuChatId != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                if (event.type == PointerEventType.Press) {
+                                                    expandedMenuChatId = null
+                                                }
+                                            }
+                                        }
+                                    }
+                            )
+                        }
+                    }
+                    }
+                }
+
         }
     }
     if (chatToRename != null) {
@@ -259,10 +311,13 @@ private fun Sidebar(
     activeChatId: String,
     onSelectChat: (String) -> Unit,
     onNewChat: () -> Unit,
+    expandedMenuChatId: String?,
+    onSetExpandedMenuChatId: (String?) -> Unit,
     onDeleteChat: (String) -> Unit,
     onRenameChat: (ChatSession) -> Unit,
     onTogglePin: (ChatSession) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+
 ) {
     var hoveredChatId by remember { mutableStateOf<String?>(null) }
 
@@ -297,16 +352,27 @@ private fun Sidebar(
                     val borderColor = if (isActive) Color(0xFF2F3336) else Color.Transparent
                     val isHovered = hoveredChatId == session.id
 
+                    val menuExpanded = expandedMenuChatId == session.id
 
-                    var menuExpanded by remember { mutableStateOf(false) }
+
+                    val transitionState = remember { MutableTransitionState(false) }
+                    transitionState.targetState = menuExpanded
 
                     Row(
                         modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = tween(400),
+                                fadeOutSpec = tween(500),
+                                placementSpec = tween(400)
+                            )
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
                             .background(bg, RoundedCornerShape(16.dp))
                             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(16.dp))
-                            .clickable { onSelectChat(session.id) }
+                            .clickable {
+                                onSelectChat(session.id)
+                                onSetExpandedMenuChatId(null)
+                            }
                             .padding(horizontal = 10.dp, vertical = 8.dp)
                             .pointerInput(session.id) {
                                 awaitPointerEventScope {
@@ -328,10 +394,10 @@ private fun Sidebar(
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             if (session.isPinned) {
                                 Icon(
-                                    painter = painterResource("/images/pin_icon.svg"),
+                                    painter = painterResource("/images/pinned_icon.svg"),
                                     contentDescription = "Pinned",
                                     tint = Color(0xFF71767B),
-                                    modifier = Modifier.size(18.dp).padding(end = 4.dp)
+                                    modifier = Modifier.size(24.dp).padding(end = 6.dp)
                                 )
                             }
                             Text(
@@ -343,72 +409,47 @@ private fun Sidebar(
                             )
                         }
 
-                        if (isHovered || menuExpanded) {
+                        if (isHovered || menuExpanded || transitionState.currentState || transitionState.targetState) {
                             Box {
                                 IconButton(
-                                    onClick = { menuExpanded = true },
+                                    onClick = {
+                                        if (menuExpanded) onSetExpandedMenuChatId(null)
+                                        else onSetExpandedMenuChatId(session.id)
+                                    },
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.MoreVert,
+                                        Icons.Default.MoreVert,
                                         contentDescription = "Опції чату",
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
 
-                                MaterialTheme(
-                                    colors = MaterialTheme.colors.copy(surface = Color(0xFF2B2D31)), // Темно-сірий фон меню
-                                    shapes = MaterialTheme.shapes.copy(medium = RoundedCornerShape(12.dp)) // Закруглені краї
-                                ) {DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                    modifier = Modifier.border(1.dp, Color(0xFF3F4147), RoundedCornerShape(12.dp)).width(200.dp)
-                                ) {
-                                    // Rename
-                                    DropdownMenuItem(onClick = {
-                                        menuExpanded = false
-                                        onRenameChat(session)
-                                    }) {
-                                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(12.dp))
-                                        Text("Rename", color = Color.White, fontSize = 14.sp)
-                                    }
-
-                                    // Pin/Unpin
-                                    DropdownMenuItem(onClick = {
-                                        menuExpanded = false
-                                        onTogglePin(session)
-                                    }) {
-                                        val pinIcon = if (session.isPinned) "/images/unpin_icon.svg" else "/images/pin_icon.svg"
-                                        val text = if (session.isPinned) "Unpin" else "Pin"
-                                        Icon(
-                                            painter = painterResource(pinIcon),
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        Text(text, color = Color.White, fontSize = 14.sp)
-                                    }
-
-                                    // Delete
-                                    DropdownMenuItem(onClick = {
-                                        menuExpanded = false
-                                        onDeleteChat(session.id)
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(12.dp))
-                                        Text("Delete", color = Color.White, fontSize = 14.sp)
-                                    }
+                                if (transitionState.currentState || transitionState.targetState) {
+                                    AnimatedChatMenu(
+                                        transitionState = transitionState,
+                                        session = session,
+                                        onDismiss = { onSetExpandedMenuChatId(null) },
+                                        onRename = {
+                                            onSetExpandedMenuChatId(null)
+                                            onRenameChat(session)
+                                        },
+                                        onTogglePin = {
+                                            onSetExpandedMenuChatId(null)
+                                            onTogglePin(session)
+                                        },
+                                        onDelete = {
+                                            onSetExpandedMenuChatId(null)
+                                            onDeleteChat(session.id)
+                                        }
+                                    )
                                 }
-                                    }
-                                }
-
+                            }
                         }
                     }
-                }}
-
+                }
+            }
 
             CompositionLocalProvider(
                 LocalScrollbarStyle provides defaultScrollbarStyle().copy(
@@ -422,6 +463,60 @@ private fun Sidebar(
                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                     adapter = rememberScrollbarAdapter(scrollState = listState)
                 )
+            }
+        }
+    }
+}
+@Composable
+fun AnimatedChatMenu(
+    transitionState: MutableTransitionState<Boolean>,
+    session: ChatSession,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onTogglePin: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = IntOffset(x = 10, y = 4),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = false)
+    ) {
+        AnimatedVisibility(
+            visibleState = transitionState,
+            enter = fadeIn(tween(500))+ slideInVertically(
+                animationSpec = tween(200),
+                initialOffsetY = { -20 }),
+            exit = fadeOut(tween(300))
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF2B2D31),
+                border = BorderStroke(1.dp, Color(0xFF3F4147)),
+                elevation = 8.dp,
+                modifier = Modifier.width(200.dp)
+            ) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    DropdownMenuItem(onClick = onRename) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Rename", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    DropdownMenuItem(onClick = onTogglePin) {
+                        val pinIcon = if (session.isPinned) "/images/unpin_icon.svg" else "/images/pin_icon.svg"
+                        val text = if (session.isPinned) "Unpin" else "Pin"
+                        Icon(painterResource(pinIcon), contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(text, color = Color.White, fontSize = 14.sp)
+                    }
+
+                    DropdownMenuItem(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Delete", color = Color.White, fontSize = 14.sp)
+                    }
+                }
             }
         }
     }
@@ -654,6 +749,7 @@ private fun markdownToAnnotated(text: String): AnnotatedString {
         }
     }
 }
+
 
 private fun AnnotatedString.Builder.appendHeading(text: String, size: androidx.compose.ui.unit.TextUnit) {
     withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = size)) {
