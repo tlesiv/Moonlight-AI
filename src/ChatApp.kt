@@ -635,15 +635,70 @@ private fun MessageBubble(message: ChatMessage) {
                     color = bubbleColor,
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    val annotatedString = markdownToAnnotated(message.text)
 
-                    Text(
-                        text = annotatedString,
+                    Column(
                         modifier = Modifier
                             .padding(horizontal = 16.dp, vertical = 10.dp)
-                            .widthIn(max = 1200.dp),
-                        style = TextStyle(color = textColor, fontSize = 15.sp)
-                    )
+                            .widthIn(max = 1200.dp)
+                    ) {
+
+                        val parts = message.text.split("```")
+
+                        parts.forEachIndexed { index, part ->
+                            if (index % 2 == 1) { // Непарні індекси — блоки коду
+                                val newlineIndex = part.indexOf('\n')
+                                val language = if (newlineIndex != -1) part.substring(0, newlineIndex).trim() else ""
+                                val code = if (newlineIndex != -1) part.substring(newlineIndex + 1).trimEnd() else part
+
+
+                                Surface(
+                                    color = Color(0xFF0D0D0D),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF2B2D31)) //заголовок коду
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = language.ifEmpty { "code" },
+                                                color = Color(0xFF949BA4),
+                                                fontSize = 12.sp
+                                            )
+                                            Text(
+                                                text = "Copy code",
+                                                color = Color(0xFF949BA4),
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.clickable {
+                                                    clipboardManager.setText(AnnotatedString(code))
+                                                }
+                                            )
+                                        }
+
+                                        Text(
+                                            text = code,//текст коду
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFFE3E5E8),
+                                            fontSize = 14.sp,
+                                            modifier = Modifier.padding(12.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                if (part.isNotEmpty()) {
+                                    Text(
+                                        text = markdownToAnnotated(part),
+                                        style = TextStyle(color = textColor, fontSize = 15.sp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if (!isUser) {
@@ -698,7 +753,7 @@ private fun markdownToAnnotated(text: String): AnnotatedString {
     return buildAnnotatedString {
         var inCodeBlock = false
         lines.forEachIndexed { index, rawLine ->
-            val line = rawLine.trimEnd()
+            val line = rawLine.trim()
             if (line.startsWith("```")) {
                 inCodeBlock = !inCodeBlock
                 if (index != lines.lastIndex) append("\n")

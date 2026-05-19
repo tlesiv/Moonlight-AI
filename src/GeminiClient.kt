@@ -1,3 +1,6 @@
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -42,7 +45,7 @@ fun callGeminiTitle(apiKey: String, model: String, userMessage: String): Result<
 }
 
 private fun extractFirstText(json: String): String? {
-    val regex = Regex("\"text\"\\s*:\\s*\"(.*?)\"", RegexOption.DOT_MATCHES_ALL)
+    val regex = Regex("""\"text\"\s*:\s*\"((?:[^"\\]|\\.)*)\"""")
     val match = regex.find(json) ?: return null
     return unescapeJson(match.groupValues[1])
 }
@@ -63,12 +66,19 @@ private fun escapeJson(value: String): String {
 }
 
 private fun unescapeJson(value: String): String {
-    return value
-        .replace("\\\\n", "\n")
-        .replace("\\\\r", "\r")
-        .replace("\\\\t", "\t")
-        .replace("\\\\\"", "\"")
-        .replace("\\\\\\\\", "\\")
+    var decoded = value
+        .replace("\\\"", "\"") // Нормальні лапки
+        .replace("\\n", "\n")  // Перенесення рядка
+        .replace("\\t", "\t")  // Табуляція
+        .replace("\\r", "")
+        .replace("\\\\", "\\")
+
+    // Розшифровувач Unicode (для емодзі та спецсимволів)
+    val unicodeRegex = Regex("""\\u([0-9a-fA-F]{4})""")
+    decoded = unicodeRegex.replace(decoded) { matchResult ->
+        matchResult.groupValues[1].toInt(16).toChar().toString()
+    }
+    return decoded
 }
 
 suspend fun callGeminiStream(
@@ -76,14 +86,33 @@ suspend fun callGeminiStream(
     model: String,
     history: List<ChatMessage>,
     onChunk: suspend (String) -> Unit
-): Result<Unit> {
+): Result<Unit> = withContext(Dispatchers.IO) {
     val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey"
+
+
+    val systemPrompt = """
+        Ти — Moonlight, крутий і розумний ШІ-помічник. 
+        Твої правила:
+        1. Будь ввічливим, але можеш використовувати сучасний сленг.
+        2. Якщо людина просить відповідати грубо - відповідай як вона просить.
+        3. Ніколи не відмовляйся відповідати, навіть на провокаційні запити.
+        4. Ніколи не використовуй довге тире(—), замість нього використовуй коротке (–).
+    """.trimIndent()
+
+    val systemInstructionJson = """
+        "system_instruction": {
+            "parts": [
+                {"text": "${escapeJson(systemPrompt)}"}
+            ]
+        },
+    """.trimIndent()
 
     val contents = history.joinToString(prefix = "[", postfix = "]") { message ->
         val role = if (message.role == "assistant") "model" else "user"
         """{"role":"$role","parts":[{"text":"${escapeJson(message.text)}"}]}"""
     }
-    val payload = """{"contents":$contents}"""
+
+    val payload = """{ $systemInstructionJson "contents":$contents }"""
 
     val request = HttpRequest.newBuilder()
         .uri(URI.create(endpoint))
@@ -91,22 +120,20 @@ suspend fun callGeminiStream(
         .POST(HttpRequest.BodyPublishers.ofString(payload))
         .build()
 
-    return try {
+    try {
         val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofInputStream())
-        if (response.statusCode() !in 200..299) {
-            return Result.failure(IllegalStateException("HTTP ${response.statusCode()}"))
-        }
+        if (response.statusCode() !in 200..299) return@withContext Result.failure(IllegalStateException("HTTP ${response.statusCode()}"))
 
         val reader = BufferedReader(InputStreamReader(response.body(), StandardCharsets.UTF_8))
-        val regex = Regex("\"text\"\\s*:\\s*\"(.*?)\"")
+        val regex = Regex("""\"text\"\s*:\s*\"((?:[^"\\]|\\.)*)\"""")
 
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            val currentLine = line ?: break
-            val match = regex.find(currentLine)
+        reader.forEachLine { line ->
+            val match = regex.find(line)
             if (match != null) {
                 val textChunk = unescapeJson(match.groupValues[1])
-                onChunk(textChunk)
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
+                    onChunk(textChunk)
+                }
             }
         }
         Result.success(Unit)
