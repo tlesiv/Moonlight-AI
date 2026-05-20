@@ -13,7 +13,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Moonlight",
-        icon = painterResource("/images/The icon.svg"),
+        icon = painterResource("/images/logo.svg"),
         state = rememberWindowState(width = 1100.dp, height = 700.dp)
     ) {
         val customTextSelectionColors = TextSelectionColors(

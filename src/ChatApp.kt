@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.animation.*
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.unit.IntOffset
@@ -303,6 +304,95 @@ fun ChatApp() {
             }
         )
     }
+
+}
+@Composable
+private fun ChatInputRow(
+    input: String,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    isLoading: Boolean
+) {
+    val placeholders = listOf(
+        "What's on your mind?",
+        "Ask me anything...",
+        "How can I help you today?",
+        "Type a message..."
+    )
+
+    var currentIndex by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(6000)
+            currentIndex = (currentIndex + 1) % placeholders.size
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = onInputChange,
+            modifier = Modifier
+                .weight(1f)
+                .onPreviewKeyEvent { event ->
+                    if (event.key == Key.Enter && event.type == KeyEventType.KeyUp && !isLoading && input.isNotBlank()) {
+                        onSend()
+                        true
+                    } else {
+                        false
+                    }
+                },
+            placeholder = {
+                Crossfade(
+                    targetState = placeholders[currentIndex],
+                    animationSpec = tween(durationMillis = 850),
+                    label = "placeholder_animation"
+                ) { text ->
+                    Text(text = text, color = Color(0xFF71767B))
+                }
+            },
+            shape = RoundedCornerShape(24.dp),
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                textColor = Color.White,
+                backgroundColor = Color(0xFF16181C),
+                focusedBorderColor = Color(0xFF2F3336),
+                unfocusedBorderColor = Color(0xFF2F3336),
+                cursorColor = Color.White
+            ),
+            singleLine = true,
+            enabled = !isLoading,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { if (!isLoading && input.isNotBlank()) onSend() })
+        )
+
+        Button(
+            onClick = onSend,
+            enabled = !isLoading && input.isNotBlank(),
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                backgroundColor = Color.White,
+                contentColor = Color.Black,
+                disabledBackgroundColor = Color(0xFFFFFFF),
+                disabledContentColor = Color(0xFF71767B)
+            ),
+            elevation = ButtonDefaults.elevation(0.dp)
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color(0xFF71767B),
+                    modifier = Modifier.width(18.dp).height(18.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Send", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
 }
 
 @Composable
@@ -532,85 +622,76 @@ private fun SingleColumnChat(
     isLoading: Boolean = false,
     errorText: String? = null
 ) {
-    Column(modifier = modifier.fillMaxSize().padding(20.dp)) {
-        Text(text = "Moonlight AI", fontWeight = FontWeight.Bold, color = Color.White)
-        Spacer(modifier = Modifier.height(12.dp))
-        if (errorText != null) {
-            Text(text = errorText, color = Color(0xFFB91C1C))
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            color = Color.Transparent,
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                items(items = messages, key = { it.id }) { message ->
-                    MessageBubble(message = message)
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = onInputChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .onPreviewKeyEvent { event ->
-                        if (event.key == Key.Enter && event.type == KeyEventType.KeyUp && !isLoading && input.isNotBlank()) {
-                            onSend()
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                placeholder = { Text("Type a message...", color = Color(0xFF71767B)) },
-                shape = RoundedCornerShape(24.dp),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    textColor = Color.White,
-                    backgroundColor = Color(0xFF16181C), // Темно-сірий фон поля
-                    focusedBorderColor = Color(0xFF2F3336),
-                    unfocusedBorderColor = Color(0xFF2F3336), // Сіра рамка без фокусу
-                    cursorColor = Color.White
-                ),
-                singleLine = true,
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = KeyboardActions(
-                    onSend = { if (!isLoading && input.isNotBlank()) onSend() }
-                )
-            )
-            Button(
-                onClick = onSend,
-                enabled = !isLoading && input.isNotBlank(),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color.White,             // Колір активної кнопки
-                    contentColor = Color.Black,                // Колір тексту активної кнопки
-                    disabledBackgroundColor = Color(0xFFFFFFF), // Колір кнопки ПІД ЧАС ЗАВАНТАЖЕННЯ (темно-сірий)
-                    disabledContentColor = Color(0xFF71767B)     // Колір контенту неактивної кнопки
-                ),
-                elevation = ButtonDefaults.elevation(0.dp)
-            ) {
-                if (isLoading) {//Колір крутілки завантаження
-                    CircularProgressIndicator(
-                        color = Color(0xFF71767B),
-                        modifier = Modifier.width(18.dp).height(18.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text("Send", fontWeight = FontWeight.Bold)
-                }
-            }
+    val listState = rememberLazyListState()
 
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.scrollToItem(messages.lastIndex)
+        }
+    }
+
+    Crossfade(
+        targetState = messages.isEmpty(),
+        animationSpec = tween(durationMillis = 600),
+        label = "chat_state_transition",
+        modifier = modifier.fillMaxSize()
+    ) { isEmpty ->
+        if (isEmpty) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.widthIn(max = 800.dp)
+                ) {
+                    Text(
+                        text = "Moonlight",
+                        fontSize = 48.sp,
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(40.dp))
+
+                    if (errorText != null) {
+                        Text(text = errorText, color = Color(0xFFB91C1C))
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    ChatInputRow(input, onInputChange, onSend, isLoading)
+                }
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                Text(text = "Moonlight AI", fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (errorText != null) {
+                    Text(text = errorText, color = Color(0xFFB91C1C))
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().padding(16.dp)
+                    ) {
+                        items(items = messages, key = { it.id }) { message ->
+                            MessageBubble(message = message)
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                ChatInputRow(input, onInputChange, onSend, isLoading)
+            }
         }
     }
 }
