@@ -1,34 +1,34 @@
 # Moonlight AI ✨
 
-Сучасний, швидкий та кастомізований Desktop-додаток для спілкування з штучним інтелектом за допомогою **Gemini API**. Інтерфейс повністю побудований на **Jetpack Compose** з урахуванням сучасних гайдлайнів UI/UX.
+A modern, fast, and customizable desktop application for interacting with artificial intelligence using the **Gemini API**. The interface is built entirely with **Jetpack Compose Desktop**, adhering to modern UI/UX guidelines.
 
-## Особливості (Features)
+## ⚡ Features
 
-- **⚡ Потокова генерація відповіді (Streaming):** Текст з'являється на екрані в реальному часі (chunk-by-chunk) без очікування повного завантаження.
-- **🛠 Надійний JSON Stream Парсер:** Кастомний механізм обробки регулярних виразів (Regex), який бездоганно декодує екрановані лапки (`\"`), символи переносу рядків (`\n`), табуляцію (`\t`) та Unicode прямо "на льоту".
-- **🎨 Стиль:** Автоматичне розпізнавання Markdown-форматування коду (Kotlin, Java, Python тощо) з винесенням назви мови в окрему сіру плашку.
-- **📋 Вбудований буфер обміну:** Можливість скопіювати будь-який блок коду в один клік.
-- **🎬 Плавні анімації:** Використання `Crossfade` та Compose-анімацій для переходів між станами додатка.
+- **⚡ Streaming Responses:** Text appears on the screen in real-time (chunk-by-chunk) without waiting for the full response to load.
+- **🛠 Robust JSON Stream Parser:** A custom Regex-based processing mechanism that flawlessly decodes escaped quotes (`\"`), newlines (`\n`), tabs (`\t`), and Unicode on the fly.
+- **🎨 Smart Styling:** Automatic recognition of Markdown code blocks (Kotlin, Java, Python, etc.) with the language name displayed in a sleek, separate badge.
+- **📋 Built-in Clipboard:** The ability to copy any generated code block with a single click.
+- **🎬 Smooth Animations:** Utilizing `Crossfade` and Compose animations for seamless transitions between app states.
 
-## 🛠 Технологічний стек (Tech Stack)
+## 🛠 Tech Stack
 
 - **Language:** [Kotlin](https://kotlinlang.org/) (100%)
 - **UI Framework:** [Jetpack Compose](https://developer.android.com/jetpack/compose) (Declarative UI)
 - **Asynchronous & Streams:** Kotlin Coroutines (`Dispatchers.IO`, `Dispatchers.Main`)
-- **Networking:** `java.net.http.HttpClient` (вбудований HTTP-клієнт з підтримкою реактивних потоків через `InputStream`)
+- **Networking:** `java.net.http.HttpClient` (built-in Java HTTP client with reactive stream support via `InputStream`)
 - **AI Core:** Google Gemini API (`v1beta` models)
 
-## 📦 Архітектура та структура коду
+## 📦 Architecture & Code Structure
 
-Проєкт має лаконічну та чисту структуру, розділену на логічні шари:
+The project features a clean and concise structure, divided into logical layers:
 
-* **`GeminiClient.kt`** — мережевий шар. Містить логіку формування Payload, взаємодію з API через `HttpClient`, кастомну функцію розшифрування `unescapeJson()` та стрімінговий метод `callGeminiStream`.
-* **`ChatApp.kt`** — шар інтерфейсу (UI). Включає архітектуру екрана чату, логіку відображення бульбашок повідомлень (`MessageBubble`), парсинг Markdown-блоків та обробку стану копіювання.
+* **`GeminiClient.kt`** — The network layer. Contains Payload formation logic, API interaction via `HttpClient`, a custom `unescapeJson()` decoding function, and the streaming `callGeminiStream` method.
+* **`ChatApp.kt`** — The UI layer. Includes the chat screen architecture, message bubble rendering logic (`MessageBubble`), Markdown parsing, and copy state handling.
 
-## 🚀 Як запустити проєкт (Getting Started)
+## 🚀 Getting Started
 
-1. **Клонуйте репозиторій**
-2. **Отримайте Gemini API Key:** Перейдіть у [Google AI Studio](https://aistudio.google.com/api-keys?project=gen-lang-client-0781421896) та згенеруйте свій безкоштовний ключ доступу.
-3. **Налаштуйте папку з API Key:** В корені папки **src/** знайдіть файл **.env.example.** та перейменуйте його на просто **.env**.
-4. **Налаштуйте ключ в проєкті:** Перейдіть в файл **.env** та вставте ваш ключ в поле **API_KEY**
-7. **Запустіть ваш IDE.**
+1. **Clone the repository.**
+2. **Get a Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/api-keys?project=gen-lang-client-0781421896) and generate your free access key.
+3. **Set up the environment file:** In the **src/** directory, locate the **.env.example** file and rename it to **.env**.
+4. **Configure the key:** Open the **.env** file and paste your key into the **API_KEY** field.
+5. **Run the project in your IDE.**
