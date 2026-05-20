@@ -645,13 +645,20 @@ private fun SingleColumnChat(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.widthIn(max = 800.dp)
                 ) {
-                    Text(
-                        text = "Moonlight",
-                        fontSize = 48.sp,
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource("/images/logo_white.svg"),
+                            contentDescription = "Logo",
+                            modifier = Modifier.size(60.dp).padding(end = 12.dp)
+                        )
+                        Text(
+                            text = "Moonlight",
+                            fontSize = 48.sp,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(40.dp))
 
