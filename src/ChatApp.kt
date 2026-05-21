@@ -49,13 +49,25 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.animation.*
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import java.io.File
+import io.github.vinceglb.filekit.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.core.PickerType
 
 val borderColor = Color(0xFF2F3336)
 
@@ -63,10 +75,13 @@ val borderColor = Color(0xFF2F3336)
 fun ChatApp() {
     val sessions = remember {
         mutableStateListOf<ChatSession>().also { existing ->
+            val loadedChat = loadChats()
             existing.addAll(loadChats())
-            if (existing.isEmpty()) {
-                existing.add(newChatSession("Chat 1"))
-            }
+            val startupChat = newChatSession("New Chat")
+            existing.add(0, startupChat)
+//            if (existing.isEmpty()) { // для відкриття з останнім чатом, а не створення нового при кожному запуску
+//                existing.add(newChatSession("Chat 1"))
+//            }
         }
     }
     var activeChatId by remember { mutableStateOf(sessions.first().id) }
@@ -122,15 +137,24 @@ fun ChatApp() {
         }
     }
 
-    val onSend = {
+    val onSend = { attachedFile: File? ->
         val trimmed = input.trim()
-        if (trimmed.isNotEmpty() && !isLoading) {
-            val userMessage = newMessage("user", trimmed)
+
+        if ((trimmed.isNotEmpty() || attachedFile != null) && !isLoading) {
+            val userMessage = ChatMessage(
+                id = java.util.UUID.randomUUID().toString(),
+                role = "user",
+                text = trimmed,
+                attachmentPath = attachedFile?.absolutePath
+            )
+
             messages.add(userMessage)
             saveChats(sessions)
             input = ""
             errorText = null
             isLoading = true
+
+
             scope.launch {
                 val apiKey = System.getenv("GEMINI_API_KEY").takeUnless { it.isNullOrBlank() }
                     ?: GeminiApiKey.takeIf { it.isNotBlank() }
@@ -141,10 +165,15 @@ fun ChatApp() {
                     isLoading = false
                     return@launch
                 }
-                if (activeChat.title.startsWith("Chat ") && messages.size == 1) {
+                if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
                     val titleResult = callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
                     if (titleResult.isSuccess) {
-                        activeChat.title = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
+                        val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
+
+                        val index = sessions.indexOfFirst { it.id == activeChat.id }
+                        if (index != -1) {
+                            sessions[index] = sessions[index].copy(title = newTitle)
+                        }
                         saveChats(sessions)
                     }
                 }
@@ -305,12 +334,15 @@ fun ChatApp() {
         )
     }
 
+
+
 }
+
 @Composable
 private fun ChatInputRow(
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit,
+    onSend: (File?) -> Unit,
     isLoading: Boolean
 ) {
     val placeholders = listOf(
@@ -321,6 +353,16 @@ private fun ChatInputRow(
     )
 
     var currentIndex by remember { mutableStateOf(0) }
+    var attachedFile by remember { mutableStateOf<File?>(null) }
+
+    val filePicker = rememberFilePickerLauncher(
+        type = PickerType.File(),
+        title = "Виберіть файл для Moonlight"
+    ) { platformFile ->
+        if (platformFile != null) {
+            attachedFile = File(platformFile.path)
+        }
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -329,68 +371,130 @@ private fun ChatInputRow(
         }
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        OutlinedTextField(
-            value = input,
-            onValueChange = onInputChange,
-            modifier = Modifier
-                .weight(1f)
-                .onPreviewKeyEvent { event ->
-                    if (event.key == Key.Enter && event.type == KeyEventType.KeyUp && !isLoading && input.isNotBlank()) {
-                        onSend()
-                        true
-                    } else {
-                        false
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // КНОПКА ПРИКРІПЛЕНОГО ФАЙЛУ
+        if (attachedFile != null) {
+            Surface(
+                color = Color(0xFF2B2D31),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(bottom = 8.dp, start = 48.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "File",
+                        tint = Color(0xFF1D9BF0),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = attachedFile!!.name,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 200.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove file",
+                        tint = Color(0xFF71767B),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { attachedFile = null }
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // КНОПКА ПРИКРІПЛЕННЯ ФАЙЛУ (+)
+            CircleIconButton(
+                icon = Icons.Default.Add,
+                onClick = { filePicker.launch() },
+                tint = Color(0xFF71767B),
+                modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+            )
+
+            OutlinedTextField(
+                value = input,
+                onValueChange = onInputChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .onPreviewKeyEvent { event ->
+                        if (event.key == Key.Enter && event.type == KeyEventType.KeyUp && !isLoading && (input.isNotBlank() || attachedFile != null)) {
+                            onSend(attachedFile)
+                            attachedFile = null
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                placeholder = {
+                    Crossfade(
+                        targetState = placeholders[currentIndex],
+                        animationSpec = tween(durationMillis = 850),
+                        label = "placeholder_animation"
+                    ) { text ->
+                        Text(text = text, color = Color(0xFF71767B))
                     }
                 },
-            placeholder = {
-                Crossfade(
-                    targetState = placeholders[currentIndex],
-                    animationSpec = tween(durationMillis = 850),
-                    label = "placeholder_animation"
-                ) { text ->
-                    Text(text = text, color = Color(0xFF71767B))
-                }
-            },
-            shape = RoundedCornerShape(24.dp),
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                textColor = Color.White,
-                backgroundColor = Color(0xFF16181C),
-                focusedBorderColor = Color(0xFF2F3336),
-                unfocusedBorderColor = Color(0xFF2F3336),
-                cursorColor = Color.White
-            ),
-            singleLine = true,
-            enabled = !isLoading,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { if (!isLoading && input.isNotBlank()) onSend() })
-        )
 
-        Button(
-            onClick = onSend,
-            enabled = !isLoading && input.isNotBlank(),
-            shape = RoundedCornerShape(24.dp),
-            colors = ButtonDefaults.buttonColors(
-                backgroundColor = Color.White,
-                contentColor = Color.Black,
-                disabledBackgroundColor = Color(0xFFFFFFF),
-                disabledContentColor = Color(0xFF71767B)
-            ),
-            elevation = ButtonDefaults.elevation(0.dp)
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    color = Color(0xFF71767B),
-                    modifier = Modifier.width(18.dp).height(18.dp),
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text("Send", fontWeight = FontWeight.Bold)
-            }
+                trailingIcon = {
+                    val isInputActive = input.isNotBlank() || attachedFile != null
+
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF71767B),
+                            modifier = Modifier.size(20.dp).padding(end = 6.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        CircleIconButton(
+                            icon = Icons.Default.Send,
+                            onClick = {
+                                if (isInputActive) {
+                                    onSend(attachedFile)
+                                    attachedFile = null
+                                }
+                            },
+                            tint = if (isInputActive) Color.White else Color(0xFF71767B),
+                            enabled = isInputActive,
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .then(
+                                    if (isInputActive) Modifier.pointerHoverIcon(PointerIcon.Hand)
+                                    else Modifier
+                                )
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(24.dp),
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    textColor = Color.White,
+                    backgroundColor = Color(0xFF16181C),
+                    focusedBorderColor = Color(0xFF2F3336),
+                    unfocusedBorderColor = Color(0xFF2F3336),
+                    cursorColor = Color.White
+                ),
+                singleLine = true,
+                enabled = !isLoading,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = {
+                    if (!isLoading && (input.isNotBlank() || attachedFile != null)) {
+                        onSend(attachedFile)
+                        attachedFile = null
+                    }
+                })
+            )
         }
     }
 }
@@ -424,7 +528,7 @@ private fun Sidebar(
             ),
             elevation = ButtonDefaults.elevation(0.dp)
         ) {
-            Text("New chat", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Add new chat", fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -558,6 +662,84 @@ private fun Sidebar(
     }
 }
 @Composable
+fun CircleIconButton(
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White,
+    enabled: Boolean = true,
+    buttonSize: androidx.compose.ui.unit.Dp = 36.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 20.dp
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val outlineColor = if (isHovered && enabled) Color(0xFF4B5563) else Color.Transparent
+
+    Box(
+        modifier = modifier
+            .size(buttonSize)
+            .clip(CircleShape)
+            //.border(1.dp, outlineColor, CircleShape)
+            .background(if (isHovered && enabled) Color(0xFF2F3336) else Color.Transparent)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            )
+            .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(iconSize)
+        )
+    }
+}
+@Composable
+fun CircleIconButton(
+    painter: Painter,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White,
+    enabled: Boolean = true,
+    buttonSize: androidx.compose.ui.unit.Dp = 36.dp, // Розмір зони кліку
+    iconSize: androidx.compose.ui.unit.Dp = 20.dp    // Розмір іконки всередині
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    // Колір обводки при наведенні
+    val outlineColor = if (isHovered && enabled) Color(0xFF4B5563) else Color.Transparent
+
+    Box(
+        modifier = modifier
+            .size(buttonSize)
+            .clip(CircleShape)
+            //.border(1.dp, outlineColor, CircleShape)
+            .background(if (isHovered && enabled) Color(0xFF2F3336) else Color.Transparent)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            )
+            .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painter,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(iconSize)
+        )
+    }
+}
+
+@Composable
 fun AnimatedChatMenu(
     transitionState: MutableTransitionState<Boolean>,
     session: ChatSession,
@@ -617,7 +799,7 @@ private fun SingleColumnChat(
     messages: List<ChatMessage>,
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit,
+    onSend: (File?) -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     errorText: String? = null
@@ -729,8 +911,38 @@ private fun MessageBubble(message: ChatMessage) {
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                             .widthIn(max = 1200.dp)
                     ) {
+                        if (message.attachmentPath != null) {
+                            val file = File(message.attachmentPath)
+                            Surface(
+                                color = if (isUser) Color(0xFF2B2D31) else Color(0xFF1E1F22),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp)
+                                    .clickable { }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu,
+                                        contentDescription = "File",
+                                        tint = Color(0xFF1D9BF0),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = file.name,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
 
-                        val parts = message.text.split("```")
+                        if (message.text.isNotBlank()) {
+                            val parts = message.text.split("```")
 
                         parts.forEachIndexed { index, part ->
                             if (index % 2 == 1) { // Непарні індекси — блоки коду
@@ -758,13 +970,12 @@ private fun MessageBubble(message: ChatMessage) {
                                                 color = Color(0xFF949BA4),
                                                 fontSize = 12.sp
                                             )
-                                            Text(
-                                                text = "Copy code",
-                                                color = Color(0xFF949BA4),
-                                                fontSize = 12.sp,
-                                                modifier = Modifier.clickable {
-                                                    clipboardManager.setText(AnnotatedString(code))
-                                                }
+                                            CircleIconButton(
+                                                painter = painterResource("/images/copy_icon_lighter.svg"),
+                                                onClick = { clipboardManager.setText(AnnotatedString(code)) },
+                                                tint = Color(0xFF949BA4),
+                                                buttonSize = 28.dp,
+                                                iconSize = 16.dp
                                             )
                                         }
 
@@ -787,6 +998,7 @@ private fun MessageBubble(message: ChatMessage) {
                             }
                         }
                     }
+                }
                 }
             }
             if (!isUser) {
@@ -813,21 +1025,15 @@ private fun MessageBubble(message: ChatMessage) {
                         alignment = Alignment.BottomCenter,
                     )
                 ) {
-                    IconButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(message.text))
-                        },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .pointerHoverIcon(PointerIcon.Hand)
-                    ) {
-                        Icon(
-                            painter = painterResource("/images/copy_button.svg"),
-                            contentDescription = "Copy message",
+
+                        CircleIconButton(
+                            painter = painterResource("/images/copy_icon.svg"),
+                            onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
                             tint = Color(0xFF71767B),
-                            modifier = Modifier.size(16.dp)
+                            buttonSize = 32.dp,
+                            iconSize = 16.dp
                         )
-                    }
+
                 }
             }
 

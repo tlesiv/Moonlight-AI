@@ -5,7 +5,8 @@ import java.util.UUID
 data class ChatMessage(
     val id: String,
     val role: String,
-    var text: String
+    var text: String,
+    val attachmentPath: String? = null
 )
 
 data class ChatSession(
