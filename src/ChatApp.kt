@@ -172,7 +172,6 @@ fun ChatApp() {
                     return@launch
                 }
                 if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
-                    // 🔥 МАГІЯ ТУТ: Запускаємо генерацію назви у фоновому потоці (IO)
                     val titleResult = withContext(Dispatchers.IO) {
                         callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
                     }
@@ -351,7 +350,6 @@ fun ChatApp() {
 fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "typing_indicator")
 
-    // Створюємо анімацію для 3 крапок із різною затримкою
     val dot1 by infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -376,7 +374,7 @@ fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
 
     Row(
         modifier = modifier
-            .size(36.dp) // Розмір такий самий, як у нашої кнопки відправки
+            .size(36.dp)
             .background(Color.Transparent, CircleShape),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -387,10 +385,8 @@ fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .padding(horizontal = 1.5.dp)//Відступ між крапками
                     .size(5.3.dp)
-                    // Підстрибування вгору (offset Y)
-                    .offset(y = (-6).dp * value)
+                    .offset(y = (-6).dp * value)// Підстрибування вгору
                     .clip(CircleShape)
-                    // Колір плавно змінюється від тьмяно-сірого до твого фірмового синього
                     .background(Color(0xFF949BA4).copy(alpha = 0.3f + (0.7f * value)))
             )
         }
