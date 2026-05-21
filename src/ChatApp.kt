@@ -68,6 +68,12 @@ import androidx.compose.ui.window.PopupProperties
 import java.io.File
 import io.github.vinceglb.filekit.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.core.PickerType
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 
 val borderColor = Color(0xFF2F3336)
 
@@ -126,7 +132,7 @@ fun ChatApp() {
             val wasActive = id == activeChatId
             sessions.removeAt(index)
             if (sessions.isEmpty()) {
-                val session = newChatSession("Chat 1")
+                val session = newChatSession("New Chat")
                 sessions.add(session)
                 activeChatId = session.id
             } else if (wasActive) {
@@ -166,7 +172,11 @@ fun ChatApp() {
                     return@launch
                 }
                 if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
-                    val titleResult = callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
+                    // 🔥 МАГІЯ ТУТ: Запускаємо генерацію назви у фоновому потоці (IO)
+                    val titleResult = withContext(Dispatchers.IO) {
+                        callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
+                    }
+
                     if (titleResult.isSuccess) {
                         val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
 
@@ -337,6 +347,55 @@ fun ChatApp() {
 
 
 }
+@Composable
+fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "typing_indicator")
+
+    // Створюємо анімацію для 3 крапок із різною затримкою
+    val dot1 by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "dot1"
+    )
+    val dot2 by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, delayMillis = 150, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "dot2"
+    )
+    val dot3 by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, delayMillis = 300, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "dot3"
+    )
+
+    Row(
+        modifier = modifier
+            .size(36.dp) // Розмір такий самий, як у нашої кнопки відправки
+            .background(Color.Transparent, CircleShape),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val dots = listOf(dot1, dot2, dot3)
+        dots.forEach { value ->
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 1.5.dp)//Відступ між крапками
+                    .size(5.3.dp)
+                    // Підстрибування вгору (offset Y)
+                    .offset(y = (-6).dp * value)
+                    .clip(CircleShape)
+                    // Колір плавно змінюється від тьмяно-сірого до твого фірмового синього
+                    .background(Color(0xFF949BA4).copy(alpha = 0.3f + (0.7f * value)))
+            )
+        }
+    }
+}
 
 @Composable
 private fun ChatInputRow(
@@ -448,16 +507,17 @@ private fun ChatInputRow(
                     }
                 },
 
+                // КЕРУВАННЯ ЕЛЕМЕНТАМИ СПРАВА ВСЕРЕДИНІ РЯДКА
                 trailingIcon = {
                     val isInputActive = input.isNotBlank() || attachedFile != null
 
                     if (isLoading) {
-                        CircularProgressIndicator(
-                            color = Color(0xFF71767B),
-                            modifier = Modifier.size(20.dp).padding(end = 6.dp),
-                            strokeWidth = 2.dp
+                        // НОВА ПРЕМІУМ АНІМАЦІЯ ЗАВАНТАЖЕННЯ
+                        MoonlightTypingIndicator(
+                            modifier = Modifier.padding(end = 6.dp)
                         )
                     } else {
+                        // Кнопка ВІДПРАВКИ тепер відображається ЗАВЖДИ
                         CircleIconButton(
                             icon = Icons.Default.Send,
                             onClick = {
@@ -466,6 +526,7 @@ private fun ChatInputRow(
                                     attachedFile = null
                                 }
                             },
+                            // Колір: Білий, якщо є текст/файл, інакше – темно-сірий
                             tint = if (isInputActive) Color.White else Color(0xFF71767B),
                             enabled = isInputActive,
                             modifier = Modifier
