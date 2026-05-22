@@ -34,6 +34,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.LocalScrollbarStyle
@@ -266,7 +268,7 @@ fun ChatApp() {
                 Crossfade(
                     targetState = currentActiveChat,
                     modifier = Modifier.weight(1f),
-                    animationSpec = tween(durationMillis = 500),//Анімація при зміні чатів(список чатів)
+                    animationSpec = tween(durationMillis = 500),//Анімація при зміні чатів(головний екран)
                     label = "chat_transition"
                 ) { chat ->
                     if (chat != null) {
@@ -297,8 +299,8 @@ fun ChatApp() {
                             )
                         }
                     }
-                    }
                 }
+            }
 
         }
     }
@@ -569,7 +571,7 @@ private fun Sidebar(
     onTogglePin: (ChatSession) -> Unit,
     modifier: Modifier = Modifier,
 
-) {
+    ) {
     var hoveredChatId by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.background(Color.Black).padding(16.dp)) {
@@ -594,7 +596,7 @@ private fun Sidebar(
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(end = 8.dp) // Відступ для повзунка
+                modifier = Modifier.fillMaxSize().padding(end = 12.dp) // Відступ для повзунка
             ) {
                 items(items = chats, key = { it.id }) { session ->
                     val isActive = session.id == activeChatId
@@ -718,6 +720,7 @@ private fun Sidebar(
         }
     }
 }
+
 @Composable
 fun CircleIconButton(
     icon: ImageVector,
@@ -861,11 +864,16 @@ private fun SingleColumnChat(
     isLoading: Boolean = false,
     errorText: String? = null
 ) {
-    val listState = rememberLazyListState()
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
-            listState.scrollToItem(messages.lastIndex)
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+    LaunchedEffect(messages.lastOrNull()?.text?.length) {
+        if (isLoading) {
+            scrollState.scrollTo(scrollState.maxValue)
         }
     }
 
@@ -924,13 +932,35 @@ private fun SingleColumnChat(
                     color = Color.Transparent,
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().padding(16.dp)
-                    ) {
-                        items(items = messages, key = { it.id }) { message ->
-                            MessageBubble(message = message)
-                            Spacer(modifier = Modifier.height(10.dp))
+                    Box(modifier = Modifier.fillMaxSize()) {
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                                .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 24.dp)
+                        ) {
+                            messages.forEach { message ->
+                                MessageBubble(message = message)
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+                        }
+
+                        CompositionLocalProvider(
+                            LocalScrollbarStyle provides defaultScrollbarStyle().copy(
+                                unhoverColor = Color(0xFF2F3336),
+                                hoverColor = Color(0xFF71767B),
+                                shape = RoundedCornerShape(4.dp),
+                                thickness = 6.dp
+                            )
+                        ) {
+                            VerticalScrollbar(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .padding(end = 4.dp, top = 16.dp, bottom = 16.dp),
+                                adapter = rememberScrollbarAdapter(scrollState = scrollState)
+                            )
                         }
                     }
                 }
@@ -951,22 +981,36 @@ private fun MessageBubble(message: ChatMessage) {
     val align = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
     val clipboardManager = LocalClipboardManager.current
 
+    val columnModifier = if (isUser) {
+        Modifier
+            .wrapContentWidth()
+            .widthIn(max = 680.dp)
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+    }
+
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = align) {
         Column(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            modifier = Modifier
-                .border(1.dp, borderColor, RoundedCornerShape(16.dp)))
-        {
+            modifier = columnModifier
+        ) {
             SelectionContainer {
                 Surface(
                     color = bubbleColor,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()
                 ) {
 
                     Column(
                         modifier = Modifier
                             .padding(horizontal = 16.dp, vertical = 10.dp)
-                            .widthIn(max = 1200.dp)
+                            .then(
+                                if (isUser) Modifier.widthIn(max = 648.dp)
+                                else Modifier.fillMaxWidth()
+                            )
                     ) {
                         if (message.attachmentPath != null) {
                             val file = File(message.attachmentPath)
@@ -1001,61 +1045,61 @@ private fun MessageBubble(message: ChatMessage) {
                         if (message.text.isNotBlank()) {
                             val parts = message.text.split("```")
 
-                        parts.forEachIndexed { index, part ->
-                            if (index % 2 == 1) { // Непарні індекси — блоки коду
-                                val newlineIndex = part.indexOf('\n')
-                                val language = if (newlineIndex != -1) part.substring(0, newlineIndex).trim() else ""
-                                val code = if (newlineIndex != -1) part.substring(newlineIndex + 1).trimEnd() else part
+                            parts.forEachIndexed { index, part ->
+                                if (index % 2 == 1) { // Непарні індекси — блоки коду
+                                    val newlineIndex = part.indexOf('\n')
+                                    val language = if (newlineIndex != -1) part.substring(0, newlineIndex).trim() else ""
+                                    val code = if (newlineIndex != -1) part.substring(newlineIndex + 1).trimEnd() else part
 
 
-                                Surface(
-                                    color = Color(0xFF0D0D0D),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFF2B2D31)) //заголовок коду
-                                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
+                                    Surface(
+                                        color = Color(0xFF0D0D0D),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(Color(0xFF2B2D31)) //заголовок коду
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = language.ifEmpty { "code" },
+                                                    color = Color(0xFF949BA4),
+                                                    fontSize = 12.sp
+                                                )
+                                                CircleIconButton(
+                                                    painter = painterResource("/images/copy_icon_lighter.svg"),
+                                                    onClick = { clipboardManager.setText(AnnotatedString(code)) },
+                                                    tint = Color(0xFF949BA4),
+                                                    buttonSize = 28.dp,
+                                                    iconSize = 16.dp
+                                                )
+                                            }
+
                                             Text(
-                                                text = language.ifEmpty { "code" },
-                                                color = Color(0xFF949BA4),
-                                                fontSize = 12.sp
-                                            )
-                                            CircleIconButton(
-                                                painter = painterResource("/images/copy_icon_lighter.svg"),
-                                                onClick = { clipboardManager.setText(AnnotatedString(code)) },
-                                                tint = Color(0xFF949BA4),
-                                                buttonSize = 28.dp,
-                                                iconSize = 16.dp
+                                                text = code,//текст коду
+                                                fontFamily = FontFamily.Monospace,
+                                                color = Color(0xFFE3E5E8),
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.padding(12.dp)
                                             )
                                         }
-
+                                    }
+                                } else {
+                                    if (part.isNotEmpty()) {
                                         Text(
-                                            text = code,//текст коду
-                                            fontFamily = FontFamily.Monospace,
-                                            color = Color(0xFFE3E5E8),
-                                            fontSize = 14.sp,
-                                            modifier = Modifier.padding(12.dp)
+                                            text = markdownToAnnotated(part),
+                                            style = TextStyle(color = textColor, fontSize = 15.sp)
                                         )
                                     }
-                                }
-                            } else {
-                                if (part.isNotEmpty()) {
-                                    Text(
-                                        text = markdownToAnnotated(part),
-                                        style = TextStyle(color = textColor, fontSize = 15.sp)
-                                    )
                                 }
                             }
                         }
                     }
-                }
                 }
             }
             if (!isUser) {
@@ -1083,13 +1127,13 @@ private fun MessageBubble(message: ChatMessage) {
                     )
                 ) {
 
-                        CircleIconButton(
-                            painter = painterResource("/images/copy_icon.svg"),
-                            onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
-                            tint = Color(0xFF71767B),
-                            buttonSize = 32.dp,
-                            iconSize = 16.dp
-                        )
+                    CircleIconButton(
+                        painter = painterResource("/images/copy_icon.svg"),
+                        onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
+                        tint = Color(0xFF71767B),
+                        buttonSize = 32.dp,
+                        iconSize = 16.dp
+                    )
 
                 }
             }
