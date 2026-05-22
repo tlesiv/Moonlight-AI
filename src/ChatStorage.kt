@@ -48,12 +48,14 @@ fun loadChats(): List<ChatSession> {
     }
     return sessions
 }
-
 fun saveChats(sessions: List<ChatSession>) {
+    val chatsToSave = sessions.filter { it.messages.isNotEmpty() }
+
     val path = historyPath()
     Files.createDirectories(path.parent)
+
     val lines = buildList {
-        sessions.forEach { session ->
+        chatsToSave.forEach { session ->
             add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}")
             session.messages.forEach { message ->
                 add("MSG|${message.id}|${message.role}|${encodeBase64(message.text)}")
