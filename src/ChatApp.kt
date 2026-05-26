@@ -76,6 +76,18 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 
 val borderColor = Color(0xFF2F3336)
 
@@ -83,7 +95,6 @@ val borderColor = Color(0xFF2F3336)
 fun ChatApp() {
     val sessions = remember {
         mutableStateListOf<ChatSession>().also { existing ->
-            val loadedChat = loadChats()
             existing.addAll(loadChats())
             val startupChat = newChatSession("New Chat")
             existing.add(0, startupChat)
@@ -98,6 +109,7 @@ fun ChatApp() {
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var expandedMenuChatId by remember { mutableStateOf<String?>(null) }
+    var editingChatId by remember { mutableStateOf<String?>(null) }
 
 
     val activeChat = sessions.first { it.id == activeChatId }
@@ -109,7 +121,6 @@ fun ChatApp() {
         errorText = null
     }
 
-    var chatToRename by remember { mutableStateOf<ChatSession?>(null) }
 
     val onTogglePin = { session: ChatSession ->
         val index = sessions.indexOfFirst { it.id == session.id }
@@ -254,7 +265,15 @@ fun ChatApp() {
                     onSetExpandedMenuChatId = { expandedMenuChatId = it },
                     onNewChat = onNewChat,
                     onDeleteChat = onDeleteChat,
-                    onRenameChat = { chatToRename = it },
+                    editingChatId = editingChatId,
+                    onSetEditingChatId = { editingChatId = it },
+                    onRenameChat = { id, newTitle ->
+                        val index = sessions.indexOfFirst { it.id == id }
+                        if (index != -1) {
+                            sessions[index] = sessions[index].copy(title = newTitle)
+                            saveChats(sessions)
+                        }
+                    },
                     onTogglePin = onTogglePin,
                     modifier = Modifier.width(240.dp).fillMaxHeight()
                 )
@@ -282,7 +301,7 @@ fun ChatApp() {
                             errorText = errorText
                         )
 
-                        if (expandedMenuChatId != null) {
+                        if (expandedMenuChatId != null || editingChatId != null) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -292,6 +311,7 @@ fun ChatApp() {
                                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                                 if (event.type == PointerEventType.Press) {
                                                     expandedMenuChatId = null
+                                                    editingChatId = null
                                                 }
                                             }
                                         }
@@ -304,49 +324,6 @@ fun ChatApp() {
 
         }
     }
-    if (chatToRename != null) {
-        var newTitle by remember { mutableStateOf(chatToRename!!.title) }
-        AlertDialog(
-            onDismissRequest = { chatToRename = null },
-            backgroundColor = Color(0xFF16181C),
-            title = { Text("Rename", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = {
-                OutlinedTextField(
-                    value = newTitle,
-                    onValueChange = { newTitle = it },
-                    singleLine = true,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
-                        textColor = Color.White,
-                        focusedBorderColor = Color(0xFF1D9BF0),
-                        unfocusedBorderColor = Color(0xFF2F3336),
-                        cursorColor = Color.White
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (newTitle.isNotBlank()) {
-                            val index = sessions.indexOfFirst { it.id == chatToRename!!.id }
-                            if (index != -1) {
-                                sessions[index] = sessions[index].copy(title = newTitle)
-                                saveChats(sessions)
-                            }
-                        }
-                        chatToRename = null
-                    }
-                ) { Text("Зберегти", color = Color(0xFF1D9BF0)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { chatToRename = null }) {
-                    Text("Скасувати", color = Color(0xFF71767B))
-                }
-            }
-        )
-    }
-
-
-
 }
 @Composable
 fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
@@ -505,17 +482,14 @@ private fun ChatInputRow(
                     }
                 },
 
-                // КЕРУВАННЯ ЕЛЕМЕНТАМИ СПРАВА ВСЕРЕДИНІ РЯДКА
                 trailingIcon = {
                     val isInputActive = input.isNotBlank() || attachedFile != null
 
                     if (isLoading) {
-                        // НОВА ПРЕМІУМ АНІМАЦІЯ ЗАВАНТАЖЕННЯ
                         MoonlightTypingIndicator(
                             modifier = Modifier.padding(end = 6.dp)
                         )
                     } else {
-                        // Кнопка ВІДПРАВКИ тепер відображається ЗАВЖДИ
                         CircleIconButton(
                             icon = Icons.Default.Send,
                             onClick = {
@@ -524,7 +498,6 @@ private fun ChatInputRow(
                                     attachedFile = null
                                 }
                             },
-                            // Колір: Білий, якщо є текст/файл, інакше – темно-сірий
                             tint = if (isInputActive) Color.White else Color(0xFF71767B),
                             enabled = isInputActive,
                             modifier = Modifier
@@ -565,14 +538,18 @@ private fun Sidebar(
     onSelectChat: (String) -> Unit,
     onNewChat: () -> Unit,
     expandedMenuChatId: String?,
+    editingChatId: String?,
+    onSetEditingChatId: (String?) -> Unit,
     onSetExpandedMenuChatId: (String?) -> Unit,
     onDeleteChat: (String) -> Unit,
-    onRenameChat: (ChatSession) -> Unit,
+    onRenameChat: (String, String) -> Unit,
     onTogglePin: (ChatSession) -> Unit,
     modifier: Modifier = Modifier,
 
     ) {
     var hoveredChatId by remember { mutableStateOf<String?>(null) }
+
+    var editingText by remember { mutableStateOf(TextFieldValue("")) }
 
     Column(modifier = modifier.background(Color.Black).padding(16.dp)) {
         Text(text = "Chats", fontWeight = FontWeight.SemiBold, color = Color.White)
@@ -622,9 +599,11 @@ private fun Sidebar(
                             .padding(vertical = 2.dp)
                             .background(bg, RoundedCornerShape(16.dp))
                             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(16.dp))
+                            .heightIn(min = 42.dp)
                             .clickable {
                                 onSelectChat(session.id)
                                 onSetExpandedMenuChatId(null)
+                                onSetEditingChatId(null)
                             }
                             .padding(horizontal = 10.dp, vertical = 8.dp)
                             .pointerInput(session.id) {
@@ -653,16 +632,80 @@ private fun Sidebar(
                                     modifier = Modifier.size(24.dp).padding(end = 6.dp)
                                 )
                             }
-                            Text(
-                                text = session.title,
-                                color = textColor,
-                                maxLines = 1,
-                                fontSize = 14.sp,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            if (editingChatId == session.id) {
+                                val focusRequester = remember { FocusRequester() }
+
+                                LaunchedEffect(Unit) {
+                                    focusRequester.requestFocus()
+                                }
+
+                                BasicTextField(
+                                    value = editingText,
+                                    onValueChange = { editingText = it },
+                                    textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 14.sp),
+                                    singleLine = true,
+                                    cursorBrush = SolidColor(Color.White),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .focusRequester(focusRequester)
+                                        .padding(end = 6.dp)
+                                        .onPreviewKeyEvent { event ->
+                                            if (event.type == KeyEventType.KeyUp) {
+                                                when (event.key) {
+                                                    Key.Enter -> {
+                                                        if (editingText.text.isNotBlank()) {
+                                                            onRenameChat(session.id, editingText.text)
+                                                        }
+                                                        onSetEditingChatId(null)
+                                                        true
+                                                    }
+                                                    Key.Escape -> {
+                                                        onSetEditingChatId(null)
+                                                        true
+                                                    }
+                                                    else -> false
+                                                }
+                                            } else false
+                                        }
+                                )
+
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cancel",
+                                    tint = Color(0xFF71767B),
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                        .clickable { onSetEditingChatId(null) }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Save",
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                        .clickable {
+                                            if (editingText.text.isNotBlank()) {
+                                                onRenameChat(session.id, editingText.text)
+                                            }
+                                            onSetEditingChatId(null)
+                                        }
+                                )
+                            }else {
+                                Text(
+                                    text = session.title,
+                                    color = textColor,
+                                    maxLines = 1,
+                                    fontSize = 14.sp,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
 
-                        if (isHovered || menuExpanded || transitionState.currentState || transitionState.targetState) {
+                        if (editingChatId != session.id && (isHovered || menuExpanded || transitionState.currentState || transitionState.targetState)) {
                             Box {
                                 IconButton(
                                     onClick = {
@@ -686,7 +729,11 @@ private fun Sidebar(
                                         onDismiss = { onSetExpandedMenuChatId(null) },
                                         onRename = {
                                             onSetExpandedMenuChatId(null)
-                                            onRenameChat(session)
+                                           onSetEditingChatId(session.id)
+                                            editingText = TextFieldValue(
+                                                text = session.title,
+                                                selection = TextRange(session.title.length) //курсор в кінці тексту при початку редагування
+                                            )
                                         },
                                         onTogglePin = {
                                             onSetExpandedMenuChatId(null)
@@ -771,9 +818,6 @@ fun CircleIconButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-
-    // Колір обводки при наведенні
-    val outlineColor = if (isHovered && enabled) Color(0xFF4B5563) else Color.Transparent
 
     Box(
         modifier = modifier
@@ -1104,29 +1148,6 @@ private fun MessageBubble(message: ChatMessage) {
             }
             if (!isUser) {
                 Spacer(modifier = Modifier.height(4.dp))
-
-                TooltipArea(
-                    tooltip = {
-                        Surface(
-                            color = Color(0xFF2F3336),
-                            shape = RoundedCornerShape(4.dp),
-                            elevation = 4.dp
-                        ) {
-                            Text(
-                                text = "Copy",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    },
-                    modifier = Modifier.padding(start = 4.dp),
-                    tooltipPlacement = TooltipPlacement.ComponentRect(
-                        anchor = Alignment.BottomCenter,
-                        alignment = Alignment.BottomCenter,
-                    )
-                ) {
-
                     CircleIconButton(
                         painter = painterResource("/images/copy_icon.svg"),
                         onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
@@ -1135,7 +1156,7 @@ private fun MessageBubble(message: ChatMessage) {
                         iconSize = 16.dp
                     )
 
-                }
+
             }
 
         }
