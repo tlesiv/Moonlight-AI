@@ -36,12 +36,19 @@ fun loadChats(): List<ChatSession> {
                         val id = parts[1]
                         val role = parts[2]
                         val text = decodeBase64(parts[3])
-                        val attachmentPath = if (parts.size >= 5 && parts[4].isNotEmpty()) decodeBase64(parts[4]) else null
-                        ChatMessage(id = id, role = role, text = text, attachmentPath = attachmentPath)
+
+                        val pathsStr = if (parts.size >= 5 && parts[4].isNotEmpty()) parts[4] else ""
+                        val attachmentPaths = if (pathsStr.isNotEmpty()) {
+                            pathsStr.split(";").map { decodeBase64(it) }
+                        } else {
+                            emptyList()
+                        }
+
+                        ChatMessage(id = id, role = role, text = text, attachmentPaths = attachmentPaths)
                     } else {
                         val role = parts[1]
                         val text = decodeBase64(parts[2])
-                        ChatMessage(id = UUID.randomUUID().toString(), role = role, text = text, attachmentPath = null)
+                        ChatMessage(id = java.util.UUID.randomUUID().toString(), role = role, text = text, attachmentPaths = emptyList())
                     }
                     current?.messages?.add(message)
                 }
@@ -60,7 +67,11 @@ fun saveChats(sessions: List<ChatSession>) {
         chatsToSave.forEach { session ->
             add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}")
             session.messages.forEach { message ->
-                val attachStr = message.attachmentPath?.let { encodeBase64(it) } ?: ""
+                // 🔥 НОВИЙ КОД ДЛЯ ЗБЕРЕЖЕННЯ: Кожен шлях шифруємо і склеюємо через ;
+                val attachStr = if (message.attachmentPaths.isNotEmpty()) {
+                    message.attachmentPaths.joinToString(";") { encodeBase64(it) }
+                } else ""
+
                 add("MSG|${message.id}|${message.role}|${encodeBase64(message.text)}|$attachStr")
             }
         }

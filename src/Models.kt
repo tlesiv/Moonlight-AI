@@ -6,7 +6,7 @@ data class ChatMessage(
     val id: String,
     val role: String,
     var text: String,
-    val attachmentPath: String? = null
+    val attachmentPaths: List<String> = emptyList()
 )
 
 data class ChatSession(
