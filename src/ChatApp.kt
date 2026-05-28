@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -81,6 +82,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -88,6 +90,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import java.io.FileInputStream
 
 val borderColor = Color(0xFF2F3336)
 
@@ -389,6 +395,17 @@ private fun ChatInputRow(
     var currentIndex by remember { mutableStateOf(0) }
     var attachedFile by remember { mutableStateOf<File?>(null) }
 
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(input)) }
+
+    LaunchedEffect(input) {
+        if (input != textFieldValue.text) {
+            textFieldValue = TextFieldValue(
+                text = input,
+                selection = TextRange(input.length) // Курсор в кінець при очищенні
+            )
+        }
+    }
+
     val filePicker = rememberFilePickerLauncher(
         type = PickerType.File(),
         title = "Виберіть файл для Moonlight"
@@ -398,6 +415,9 @@ private fun ChatInputRow(
         }
     }
 
+    val focusRequester = remember { FocusRequester() }
+    var hasRequestedFocus by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(6000)
@@ -405,52 +425,161 @@ private fun ChatInputRow(
         }
     }
 
+    LaunchedEffect(attachedFile) {
+        kotlinx.coroutines.delay(100)
+        try {
+            focusRequester.requestFocus()
+        } catch (e: Exception) {}
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        // КНОПКА ПРИКРІПЛЕНОГО ФАЙЛУ
-        if (attachedFile != null) {
-            Surface(
-                color = Color(0xFF2B2D31),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp, start = 48.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "File",
-                        tint = Color(0xFF1D9BF0),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = attachedFile!!.name,
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 200.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove file",
-                        tint = Color(0xFF71767B),
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clickable { attachedFile = null }
-                    )
-                }
+        // КНОПКА ПРИКРІПЛЕНОГО ФАЙЛУ / КАРТИНКИ
+        var displayFile by remember { mutableStateOf<File?>(null) }
+        LaunchedEffect(attachedFile) {
+            if (attachedFile != null) {
+                displayFile = attachedFile
             }
         }
+            // АНІМАЦІЯ ПОЯВИ ТА ЗНИКНЕННЯ ФАЙЛУ / КАРТИНКИ
+            AnimatedVisibility(
+                visible = attachedFile != null,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(300)) + shrinkVertically(tween(250))
+            ) {
+                displayFile?.let { file ->
+                    val isImage = file.extension.lowercase() in listOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
+
+                    if (isImage) {
+                        var bitmap by remember(file) { mutableStateOf<ImageBitmap?>(null) }
+                        LaunchedEffect(file) {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    FileInputStream(file).use { bitmap = loadImageBitmap(it) }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+
+                        Box(modifier = Modifier.padding(bottom = 12.dp, start = 48.dp)) {
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap!!,
+                                    contentDescription = "Attached image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .border(1.dp, Color(0xFF3F4147), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            try {
+                                                if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                                    java.awt.Desktop.getDesktop().open(file)
+                                                }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF2B2D31))
+                                        .clickable {
+                                            try {
+                                                if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                                    java.awt.Desktop.getDesktop().open(file)
+                                                }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                        .pointerHoverIcon(PointerIcon.Hand),
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 6.dp, y = (-6).dp)
+                                    .size(22.dp)
+                                    .background(Color.White, CircleShape)
+                                    .clickable { attachedFile = null }
+                                    .pointerHoverIcon(PointerIcon.Hand),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = Color(0xFF1E1F22),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2F3336)),
+                            modifier = Modifier
+                                .padding(bottom = 8.dp, start = 48.dp)
+                                .clickable {
+                                    try {
+                                        if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                            java.awt.Desktop.getDesktop().open(file)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                                .pointerHoverIcon(PointerIcon.Hand)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = DocumentIcon,
+                                    contentDescription = "File",
+                                    tint = Color(0xFF949BA4),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = file.name,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = FontFamily.SansSerif,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 160.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove file",
+                                    tint = Color(0xFF949BA4),
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clickable { attachedFile = null }
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // КНОПКА ПРИКРІПЛЕННЯ ФАЙЛУ (+)
             CircleIconButton(
                 icon = Icons.Default.Add,
                 onClick = { filePicker.launch() },
@@ -459,15 +588,41 @@ private fun ChatInputRow(
             )
 
             OutlinedTextField(
-                value = input,
-                onValueChange = onInputChange,
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    textFieldValue = newValue
+                    onInputChange(newValue.text)
+                },
                 modifier = Modifier
                     .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onGloballyPositioned {
+                        if (!hasRequestedFocus) {
+                            try {
+                                focusRequester.requestFocus()
+                                hasRequestedFocus = true
+                            } catch (e: Exception) {}
+                        }
+                    }
                     .onPreviewKeyEvent { event ->
-                        if (event.key == Key.Enter && event.type == KeyEventType.KeyUp && !isLoading && (input.isNotBlank() || attachedFile != null)) {
-                            onSend(attachedFile)
-                            attachedFile = null
-                            true
+                        if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.type == KeyEventType.KeyDown) {
+                            if (event.isShiftPressed) {
+                                val currentText = textFieldValue.text
+                                val selection = textFieldValue.selection
+                                val newText = currentText.substring(0, selection.min) + "\n" + currentText.substring(selection.max)
+                                val newCursorPos = selection.min + 1
+
+                                val newValue = TextFieldValue(text = newText, selection = TextRange(newCursorPos))
+                                textFieldValue = newValue
+                                onInputChange(newText)
+                                true
+                            } else {
+                                if (!isLoading && (textFieldValue.text.isNotBlank() || attachedFile != null)) {
+                                    onSend(attachedFile)
+                                    attachedFile = null
+                                }
+                                true
+                            }
                         } else {
                             false
                         }
@@ -481,9 +636,8 @@ private fun ChatInputRow(
                         Text(text = text, color = Color(0xFF71767B))
                     }
                 },
-
                 trailingIcon = {
-                    val isInputActive = input.isNotBlank() || attachedFile != null
+                    val isInputActive = textFieldValue.text.isNotBlank() || attachedFile != null
 
                     if (isLoading) {
                         MoonlightTypingIndicator(
@@ -517,15 +671,10 @@ private fun ChatInputRow(
                     unfocusedBorderColor = Color(0xFF2F3336),
                     cursorColor = Color.White
                 ),
-                singleLine = true,
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = {
-                    if (!isLoading && (input.isNotBlank() || attachedFile != null)) {
-                        onSend(attachedFile)
-                        attachedFile = null
-                    }
-                })
+                singleLine = false,
+                maxLines = 5,
+                readOnly = isLoading,
+                keyboardOptions = KeyboardOptions.Default
             )
         }
     }
@@ -550,6 +699,7 @@ private fun Sidebar(
     var hoveredChatId by remember { mutableStateOf<String?>(null) }
 
     var editingText by remember { mutableStateOf(TextFieldValue("")) }
+    val scope = rememberCoroutineScope()
 
     Column(modifier = modifier.background(Color.Black).padding(16.dp)) {
         Text(text = "Chats", fontWeight = FontWeight.SemiBold, color = Color.White)
@@ -585,7 +735,7 @@ private fun Sidebar(
                     val menuExpanded = expandedMenuChatId == session.id
 
 
-                    val transitionState = remember { MutableTransitionState(false) }
+                    val transitionState = remember(editingChatId == session.id) { MutableTransitionState(false) }
                     transitionState.targetState = menuExpanded
 
                     Row(
@@ -705,7 +855,8 @@ private fun Sidebar(
                             }
                         }
 
-                        if (editingChatId != session.id && (isHovered || menuExpanded || transitionState.currentState || transitionState.targetState)) {
+                        val isMenuActive = menuExpanded || transitionState.currentState || transitionState.targetState
+                        if ((editingChatId != session.id && isHovered) || isMenuActive) {
                             Box {
                                 IconButton(
                                     onClick = {
@@ -729,19 +880,28 @@ private fun Sidebar(
                                         onDismiss = { onSetExpandedMenuChatId(null) },
                                         onRename = {
                                             onSetExpandedMenuChatId(null)
-                                           onSetEditingChatId(session.id)
-                                            editingText = TextFieldValue(
-                                                text = session.title,
-                                                selection = TextRange(session.title.length) //курсор в кінці тексту при початку редагування
-                                            )
+                                            scope.launch {
+                                                kotlinx.coroutines.delay(200)
+                                                onSetEditingChatId(session.id)
+                                                editingText = TextFieldValue(
+                                                    text = session.title,
+                                                    selection = TextRange(session.title.length)
+                                                )
+                                            }
                                         },
                                         onTogglePin = {
                                             onSetExpandedMenuChatId(null)
-                                            onTogglePin(session)
+                                            scope.launch {
+                                                kotlinx.coroutines.delay(300)
+                                                onTogglePin(session)
+                                            }
                                         },
                                         onDelete = {
                                             onSetExpandedMenuChatId(null)
-                                            onDeleteChat(session.id)
+                                            scope.launch {
+                                                kotlinx.coroutines.delay(300)
+                                                onDeleteChat(session.id)
+                                            }
                                         }
                                     )
                                 }
@@ -1058,30 +1218,95 @@ private fun MessageBubble(message: ChatMessage) {
                     ) {
                         if (message.attachmentPath != null) {
                             val file = File(message.attachmentPath)
-                            Surface(
-                                color = if (isUser) Color(0xFF2B2D31) else Color(0xFF1E1F22),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp)
-                                    .clickable { }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            val isImage = file.extension.lowercase() in listOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
+
+                            if (isImage) {
+                                var bitmap by remember(file) { mutableStateOf<ImageBitmap?>(null) }
+
+                                LaunchedEffect(file) {
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            if (file.exists()) {
+                                                FileInputStream(file).use { bitmap = loadImageBitmap(it) }
+                                            }
+                                        }
+                                    } catch (e: Exception) { e.printStackTrace() }
+                                }
+
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap!!,
+                                        contentDescription = "Chat image preview",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .padding(bottom = if (message.text.isNotBlank()) 4.dp else 0.dp)
+                                            .size(150.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                try {
+                                                    if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                                        java.awt.Desktop.getDesktop().open(file)
+                                                    }
+                                                } catch (e: Exception) { e.printStackTrace() }
+                                            }
+                                            .pointerHoverIcon(PointerIcon.Hand)
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp)
+                                            .size(140.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF16181C))
+                                            .clickable {
+                                        try {
+                                            if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                                java.awt.Desktop.getDesktop().open(file)
+                                            }
+                                        } catch (e: Exception) { e.printStackTrace() }
+                                    }
+                                            .pointerHoverIcon(PointerIcon.Hand),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(color = Color(0xFF1D9BF0), strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    color = if (isUser) Color(0xFF2B2D31) else Color(0xFF1E1F22),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, borderColor),
+                                    modifier = Modifier
+                                        .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp)
+                                        .clickable {
+                                            try {
+                                                if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
+                                                    java.awt.Desktop.getDesktop().open(file)
+                                                }
+                                            } catch (e: Exception) { e.printStackTrace() }
+                                        }
+                                        .pointerHoverIcon(PointerIcon.Hand)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Menu,
-                                        contentDescription = "File",
-                                        tint = Color(0xFF1D9BF0),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = file.name,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = DocumentIcon,
+                                            contentDescription = "File",
+                                            tint = Color(0xFF949BA4),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = file.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1220,7 +1445,68 @@ private fun markdownToAnnotated(text: String): AnnotatedString {
         }
     }
 }
+val AttachmentIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Attachment",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = SolidColor(Color.White)) {
+            moveTo(16.5f, 6f)
+            lineTo(16.5f, 17.5f)
+            curveTo(16.5f, 19.71f, 14.71f, 21.5f, 12.5f, 21.5f)
+            curveTo(10.29f, 21.5f, 8.5f, 19.71f, 8.5f, 17.5f)
+            lineTo(8.5f, 5f)
+            curveTo(8.5f, 3.62f, 9.62f, 2.5f, 11f, 2.5f)
+            curveTo(12.38f, 2.5f, 13.5f, 3.62f, 13.5f, 5f)
+            lineTo(13.5f, 15.5f)
+            curveTo(13.5f, 16.05f, 13.05f, 16.5f, 12.5f, 16.5f)
+            curveTo(11.95f, 16.5f, 11.5f, 16.05f, 11.5f, 15.5f)
+            lineTo(11.5f, 6f)
+            lineTo(10f, 6f)
+            lineTo(10f, 15.5f)
+            curveTo(10f, 16.88f, 11.12f, 18f, 12.5f, 18f)
+            curveTo(13.88f, 18f, 15f, 16.88f, 15f, 15.5f)
+            lineTo(15f, 5f)
+            curveTo(15f, 2.79f, 13.21f, 1f, 11f, 1f)
+            curveTo(8.79f, 1f, 7f, 2.79f, 7f, 5f)
+            lineTo(7f, 17.5f)
+            curveTo(7f, 20.54f, 9.46f, 23f, 12.5f, 23f)
+            curveTo(15.54f, 23f, 18f, 20.54f, 18f, 17.5f)
+            lineTo(18f, 6f)
+            lineTo(16.5f, 6f)
+            close()
+        }
+    }.build()
 
+val DocumentIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Document",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = SolidColor(Color.White)) {
+            moveTo(14f, 2f)
+            lineTo(6f, 2f)
+            curveTo(4.9f, 2f, 4f, 2.9f, 4f, 4f)
+            lineTo(4f, 20f)
+            curveTo(4f, 21.1f, 4.9f, 22f, 6f, 22f)
+            lineTo(18f, 22f)
+            curveTo(19.1f, 22f, 20f, 21.1f, 20f, 20f)
+            lineTo(20f, 8f)
+            lineTo(14f, 2f)
+            close()
+            moveTo(13f, 9f)
+            lineTo(13f, 3.5f)
+            lineTo(18.5f, 9f)
+            lineTo(13f, 9f)
+            close()
+        }
+    }.build()
 
 private fun AnnotatedString.Builder.appendHeading(text: String, size: androidx.compose.ui.unit.TextUnit) {
     withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = size)) {

@@ -16,6 +16,7 @@ fun loadChats(): List<ChatSession> {
     val lines = Files.readAllLines(path, StandardCharsets.UTF_8)
     val sessions = mutableListOf<ChatSession>()
     var current: ChatSession? = null
+
     lines.forEach { line ->
         when {
             line.startsWith("CHAT|") -> {
@@ -35,11 +36,12 @@ fun loadChats(): List<ChatSession> {
                         val id = parts[1]
                         val role = parts[2]
                         val text = decodeBase64(parts[3])
-                        ChatMessage(id = id, role = role, text = text)
+                        val attachmentPath = if (parts.size >= 5 && parts[4].isNotEmpty()) decodeBase64(parts[4]) else null
+                        ChatMessage(id = id, role = role, text = text, attachmentPath = attachmentPath)
                     } else {
                         val role = parts[1]
                         val text = decodeBase64(parts[2])
-                        ChatMessage(id = UUID.randomUUID().toString(), role = role, text = text)
+                        ChatMessage(id = UUID.randomUUID().toString(), role = role, text = text, attachmentPath = null)
                     }
                     current?.messages?.add(message)
                 }
@@ -48,9 +50,9 @@ fun loadChats(): List<ChatSession> {
     }
     return sessions
 }
+
 fun saveChats(sessions: List<ChatSession>) {
     val chatsToSave = sessions.filter { it.messages.isNotEmpty() }
-
     val path = historyPath()
     Files.createDirectories(path.parent)
 
@@ -58,7 +60,8 @@ fun saveChats(sessions: List<ChatSession>) {
         chatsToSave.forEach { session ->
             add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}")
             session.messages.forEach { message ->
-                add("MSG|${message.id}|${message.role}|${encodeBase64(message.text)}")
+                val attachStr = message.attachmentPath?.let { encodeBase64(it) } ?: ""
+                add("MSG|${message.id}|${message.role}|${encodeBase64(message.text)}|$attachStr")
             }
         }
     }
