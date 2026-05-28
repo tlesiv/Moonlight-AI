@@ -89,95 +89,126 @@ private fun buildHistoryJson(history: List<ChatMessage>): String {
         val role = if (message.role == "assistant") "model" else "user"
 
         var combinedText = message.text
-        var inlineDataJson = ""
+        val inlineDataParts = mutableListOf<String>()
 
-        if (message.attachmentPath != null) {
-            val file = File(message.attachmentPath)
-            if (file.exists()) {
-                val ext = file.extension.lowercase()
+        if (message.attachmentPaths.isNotEmpty()) {
+            message.attachmentPaths.forEach { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    val ext = file.extension.lowercase()
 
-                if (file.length() > 20 * 1024 * 1024) {
-                    combinedText += "\n\n[Системне повідомлення: Файл ${file.name} занадто великий для відправки (ліміт 20 МБ).]"
-                }
-                else if (ext == "docx") {
-                    try {
-                        ZipFile(file).use { zip ->
-                            val entry = zip.getEntry("word/document.xml")
-                            if (entry != null) {
-                                val xml = zip.getInputStream(entry).bufferedReader().readText()
-                                val pRegex = Regex("<w:p[^>]*>(.*?)</w:p>", RegexOption.DOT_MATCHES_ALL)
-                                val tRegex = Regex("<w:t[^>]*>(.*?)</w:t>", RegexOption.DOT_MATCHES_ALL)
+                    if (file.length() > 20 * 1024 * 1024) {
+                        combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач щойно намагався прикріпити файл ${file.name}, але його розмір перевищує ліміт у 20 МБ, тому ти його не отримав. Твоє завдання: ввічливо повідом користувачу про це обмеження.]"                    } else if (ext == "docx") {
+                        try {
+                            java.util.zip.ZipFile(file).use { zip ->
+                                val entry = zip.getEntry("word/document.xml")
+                                if (entry != null) {
+                                    val xml = zip.getInputStream(entry).bufferedReader().readText()
+                                    val pRegex = Regex("<w:p[^>]*>(.*?)</w:p>", RegexOption.DOT_MATCHES_ALL)
+                                    val tRegex = Regex("<w:t[^>]*>(.*?)</w:t>", RegexOption.DOT_MATCHES_ALL)
 
-                                val docText = pRegex.findAll(xml).joinToString("\n") { pMatch ->
-                                    tRegex.findAll(pMatch.groupValues[1]).joinToString("") { it.groupValues[1] }
-                                }.trim()
+                                    val docText = pRegex.findAll(xml).joinToString("\n") { pMatch ->
+                                        tRegex.findAll(pMatch.groupValues[1]).joinToString("") { it.groupValues[1] }
+                                    }.trim()
 
-                                combinedText += "\n\n[Вміст файлу ${file.name}]:\n$docText"
+                                    combinedText += "\n\n[Вміст файлу ${file.name}]:\n$docText"
+                                }
                             }
+                        } catch (e: Exception) {
+                            combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Під час спроби прочитати файл ${file.name} виникла системна помилка (файл пошкоджено або заблоковано). Повідом користувача, що файл не вдалося відкрити.]"
+                            e.printStackTrace()
                         }
-                    } catch (e: Exception) {
-                        combinedText += "\n\n[Помилка читання файлу ${file.name}]"
-                        e.printStackTrace()
                     }
-                }
-                else {
-                    try {
-                        val bytes = Files.readAllBytes(file.toPath())
-                        val base64 = Base64.getEncoder().encodeToString(bytes)
-
-                        val mimeType = when (ext) {
-                            // Зображення
-                            "png" -> "image/png"
-                            "jpg", "jpeg" -> "image/jpeg"
-                            "webp" -> "image/webp"
-                            "heic" -> "image/heic"
-                            "heif" -> "image/heif"
-
-                            // Документи
-                            "pdf" -> "application/pdf"
-                            "rtf" -> "application/rtf"
-
-                            // Текст, Дані та Код програми
-                            "txt", "md", "csv", "json", "xml", "html", "css", "js", "ts",
-                            "py", "java", "kt", "c", "cpp", "cs", "php", "swift", "go",
-                            "rs", "sh", "bat", "ini", "yaml", "yml", "gradle", "sql" -> "text/plain"
-
-                            // Аудіо
-                            "wav" -> "audio/wav"
-                            "mp3" -> "audio/mp3"
-                            "aiff" -> "audio/aiff"
-                            "aac" -> "audio/aac"
-                            "ogg" -> "audio/ogg"
-                            "flac" -> "audio/flac"
-
-                            // Відео (до 20Мб)
-                            "mp4" -> "video/mp4"
-                            "mpeg" -> "video/mpeg"
-                            "mov" -> "video/quicktime"
-                            "avi" -> "video/x-msvideo"
-                            "flv" -> "video/x-flv"
-                            "mpg" -> "video/mpeg"
-                            "webm" -> "video/webm"
-                            "wmv" -> "video/x-ms-wmv"
-                            "3gpp" -> "video/3gpp"
-
-                            else -> "application/octet-stream"
+                    else if (ext in listOf(
+                            "txt",
+                            "md",
+                            "csv",
+                            "json",
+                            "xml",
+                            "html",
+                            "css",
+                            "js",
+                            "ts",
+                            "py",
+                            "java",
+                            "kt",
+                            "c",
+                            "cpp",
+                            "cs",
+                            "php",
+                            "swift",
+                            "go",
+                            "rs",
+                            "sh",
+                            "bat",
+                            "ini",
+                            "yaml",
+                            "yml",
+                            "gradle",
+                            "sql"
+                        )
+                    ) {
+                        try {
+                            val fileText = file.readText()
+                            combinedText += "\n\n[Вміст файлу ${file.name}]:\n$fileText"
+                        } catch (e: Exception) {
+                            combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Під час спроби прочитати текстовий файл ${file.name} виникла системна помилка. Повідом користувача, що файл не вдалося прочитати, і запропонуй йому перевірити файл або скопіювати текст вручну в чат.]"
+                            e.printStackTrace()
                         }
-
-                        inlineDataJson = """, {"inlineData": {"mimeType": "$mimeType", "data": "$base64"}}"""
-                    } catch (e: Exception) {
-                        e.printStackTrace()
                     }
+                    // Всі інші (картинки, pdf, аудіо, відео) йдуть у Base64
+                    else {
+                        try {
+                            val bytes = java.nio.file.Files.readAllBytes(file.toPath())
+                            val base64 = java.util.Base64.getEncoder().encodeToString(bytes)
+
+                            val mimeType = when (ext) {
+                                "png" -> "image/png"
+                                "jpg", "jpeg" -> "image/jpeg"
+                                "webp" -> "image/webp"
+                                "heic" -> "image/heic"
+                                "heif" -> "image/heif"
+                                "pdf" -> "application/pdf"
+                                "rtf" -> "application/rtf"
+                                "wav" -> "audio/wav"
+                                "mp3" -> "audio/mp3"
+                                "aiff" -> "audio/aiff"
+                                "aac" -> "audio/aac"
+                                "ogg" -> "audio/ogg"
+                                "flac" -> "audio/flac"
+                                "mp4" -> "video/mp4"
+                                "mpeg", "mpg" -> "video/mpeg"
+                                "mov" -> "video/quicktime"
+                                "avi" -> "video/x-msvideo"
+                                "flv" -> "video/x-flv"
+                                "webm" -> "video/webm"
+                                "wmv" -> "video/x-ms-wmv"
+                                "3gpp" -> "video/3gpp"
+                                else -> null
+                            }
+
+                            if (mimeType != null) {
+                                inlineDataParts.add("""{"inlineData": {"mimeType": "$mimeType", "data": "$base64"}}""")
+                            } else {
+                                combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач прикріпив файл ${file.name}, але цей формат (${ext}) тобою не підтримується. Твоє завдання: скажи користувачу, що ти не можеш прочитати цей тип файлу, і запропонуй надіслати інформацію інакше (наприклад, скопіювати текст в чат або зробити скріншот).]"                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                } else {
+                    combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач намагався відправити файл ${file.name}, але система не змогла знайти його на диску (можливо, він був видалений або переміщений під час відправки). Твоє завдання: ввічливо повідом про це користувача і попроси прикріпити файл ще раз.]"
                 }
             }
         }
 
-        if (combinedText.isBlank() && inlineDataJson.isEmpty()) {
+        if (combinedText.isBlank() && inlineDataParts.isEmpty()) {
             combinedText = " "
         }
 
-        val partsJson = """{"text":"${escapeJson(combinedText)}"}$inlineDataJson"""
-        """{"role":"$role","parts":[$partsJson]}"""
+        val textPartJson = """{"text":"${escapeJson(combinedText)}"}"""
+        val allPartsJson = (listOf(textPartJson) + inlineDataParts).joinToString(",")
+
+        """{"role":"$role","parts":[$allPartsJson]}"""
     }
 }
 
