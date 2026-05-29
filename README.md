@@ -23,12 +23,15 @@ A modern, fast, and customizable desktop application for interacting with artifi
 The project features a clean and concise structure, divided into logical layers:
 
 * **`GeminiClient.kt`** — The network layer. Contains Payload formation logic, API interaction via `HttpClient`, a custom `unescapeJson()` decoding function, and the streaming `callGeminiStream` method.
+* **`OpenRouterClient.kt`** — Network layer for third-party models, supporting base64 image encoding for vision-capable models.
 * **`ChatApp.kt`** — The UI layer. Includes the chat screen architecture, message bubble rendering logic (`MessageBubble`), Markdown parsing, and copy state handling.
+* **`Models.kt`** — Data structures for chat sessions and message history.
 
 ## 🚀 Getting Started
 
 1. **Clone the repository.**
 2. **Get a Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/api-keys?project=gen-lang-client-0781421896) and generate your free access key.
-3. **Set up the environment file:** In the **src/** directory, locate the **.env.example** file and rename it to **.env**.
-4. **Configure the key:** Open the **.env** file and paste your key into the **API_KEY** field.
-5. **Run the project in your IDE.**
+3. **Get a OpenRouter API Key:** Go to [OpenRouter](https://openrouter.ai/workspaces/default/keys) and generate your free access key.
+4. **Set up the environment file:** In the **src/** directory, locate the **.env.example** file and rename it to **.env**.
+5. **Configure the key:** Open the **.env** file and paste your key into the **API_KEY** field for Gemini and **OPENROUTER_API_KEY** field for OpenRouter.
+6. **Run the project in your IDE.**
