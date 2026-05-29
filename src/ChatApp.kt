@@ -164,7 +164,7 @@ fun ChatApp() {
         }
     }
 
-    val onSend = { attachedFiles: List<File> ->
+    val onSend = { attachedFiles: List<File>, modelName: String ->
         val trimmed = input.trim()
 
         if ((trimmed.isNotEmpty() || attachedFiles.isNotEmpty()) && !isLoading) {
@@ -182,56 +182,105 @@ fun ChatApp() {
             isLoading = true
 
             scope.launch {
-                val apiKey = System.getenv("GEMINI_API_KEY").takeUnless { it.isNullOrBlank() }
-                    ?: GeminiApiKey.takeIf { it.isNotBlank() }
-                val model = System.getenv("GEMINI_MODEL") ?: DefaultModel
-                if (apiKey.isNullOrBlank()) {
-                    messages.add(newMessage("assistant", "Missing GEMINI_API_KEY environment variable or GeminiApiKey constant."))
-                    saveChats(sessions)
-                    isLoading = false
-                    return@launch
-                }
-                if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
-                    val titleResult = withContext(Dispatchers.IO) {
-                        callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
-                    }
+                if (modelName == "Gemini 3.1 Flash_Lite") {
+                    val apiKey = System.getenv("GEMINI_API_KEY").takeUnless { it.isNullOrBlank() }
+                        ?: GeminiApiKey.takeIf { it.isNotBlank() }
+                    val model = System.getenv("GEMINI_MODEL") ?: DefaultModel
 
-                    if (titleResult.isSuccess) {
-                        val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
-
-                        val index = sessions.indexOfFirst { it.id == activeChat.id }
-                        if (index != -1) {
-                            sessions[index] = sessions[index].copy(title = newTitle)
-                        }
+                    if (apiKey.isNullOrBlank()) {
+                        messages.add(newMessage("assistant", "Missing GEMINI_API_KEY environment variable or GeminiApiKey constant."))
                         saveChats(sessions)
+                        isLoading = false
+                        return@launch
                     }
-                }
 
-                val assistantMessage = newMessage("assistant", "")
-                messages.add(assistantMessage)
-                saveChats(sessions)
+                    if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
+                        val titleResult = withContext(Dispatchers.IO) {
+                            callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
+                        }
 
-                var currentText = ""
-
-                val result = withContext(Dispatchers.IO) {
-                    callGeminiStream(apiKey = apiKey, model = model, history = messages.dropLast(1)) { chunk ->
-                        currentText += chunk
-
-                        withContext(Dispatchers.Main) {
-                            val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                        if (titleResult.isSuccess) {
+                            val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
+                            val index = sessions.indexOfFirst { it.id == activeChat.id }
                             if (index != -1) {
-                                messages[index] = messages[index].copy(text = currentText)
+                                sessions[index] = sessions[index].copy(title = newTitle)
+                            }
+                            saveChats(sessions)
+                        }
+                    }
+
+                    val assistantMessage = newMessage("assistant", "")
+                    messages.add(assistantMessage)
+                    saveChats(sessions)
+
+                    var currentText = ""
+                    val result = withContext(Dispatchers.IO) {
+                        callGeminiStream(apiKey = apiKey, model = model, history = messages.dropLast(1)) { chunk ->
+                            currentText += chunk
+                            withContext(Dispatchers.Main) {
+                                val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                                if (index != -1) {
+                                    messages[index] = messages[index].copy(text = currentText)
+                                }
                             }
                         }
                     }
-                }
 
-                if (result.isFailure) {
-                    val message = result.exceptionOrNull()?.message ?: "Unknown error"
-                    errorText = message
-                    val index = messages.indexOfFirst { it.id == assistantMessage.id }
-                    if (index != -1) {
-                        messages[index] = messages[index].copy(text = "Error: $message")
+                    if (result.isFailure) {
+                        val message = result.exceptionOrNull()?.message ?: "Unknown error"
+                        errorText = message
+                        val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                        if (index != -1) {
+                            messages[index] = messages[index].copy(text = "Error: $message")
+                        }
+                    }
+                } else {
+                    val openRouterKey = System.getenv("OPENROUTER_API_KEY").takeUnless { it.isNullOrBlank() }
+                        ?: OpenRouterApiKey.takeIf { it.isNotBlank() }
+
+                    if (openRouterKey.isNullOrBlank()) {
+                        messages.add(newMessage("assistant", "Missing OPENROUTER_API_KEY environment variable or OpenRouterApiKey constant."))
+                        saveChats(sessions)
+                        isLoading = false
+                        return@launch
+                    }
+
+                    val assistantMessage = newMessage("assistant", "")
+                    messages.add(assistantMessage)
+                    saveChats(sessions)
+
+                    var currentText = ""
+                    val openRouterModelId = when (modelName) {
+                        //"DeepSeek V4 Flash" -> "deepseek/deepseek-v4-flash:free"
+                        //"Qwen 3 Coder" -> "qwen/qwen3-coder:free "
+                        //"Llama 3.3" -> "meta-llama/llama-3.3-70b-instruct:free"
+                        "Gemma 4" -> "google/gemma-4-31b-it:free"
+                        else -> "google/gemma-4-31b-it:free"
+                    }
+
+                    val result = withContext(Dispatchers.IO) {
+                        callOpenRouterStream(
+                            apiKey = openRouterKey,
+                            model = openRouterModelId,
+                            history = messages.dropLast(1)
+                        ) { chunk ->
+                            currentText += chunk
+                            withContext(Dispatchers.Main) {
+                                val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                                if (index != -1) {
+                                    messages[index] = messages[index].copy(text = currentText)
+                                }
+                            }
+                        }
+                    }
+
+                    if (result.isFailure) {
+                        val message = result.exceptionOrNull()?.message ?: "Unknown error"
+                        errorText = message
+                        val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                        if (index != -1) {
+                            messages[index] = messages[index].copy(text = "Error: $message")
+                        }
                     }
                 }
 
@@ -379,11 +428,12 @@ fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatInputRow(
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: (List<File>) -> Unit,
+    onSend: (List<File>, String) -> Unit,
     isLoading: Boolean
 ) {
     val placeholders = listOf(
@@ -396,6 +446,9 @@ private fun ChatInputRow(
     var currentIndex by remember { mutableStateOf(0) }
     var attachedFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue(input)) }
+
+    var selectedModel by remember { mutableStateOf("Gemini 3.1 Flash_Lite") }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     var displayFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     LaunchedEffect(attachedFiles) {
@@ -437,19 +490,14 @@ private fun ChatInputRow(
 
     LaunchedEffect(attachedFiles.size) {
         kotlinx.coroutines.delay(100)
-        try {
-            focusRequester.requestFocus()
-        } catch (e: Exception) {
-        }
+        try { focusRequester.requestFocus() } catch (e: Exception) {}
     }
 
-    Column(modifier = Modifier
-        .fillMaxWidth()
-    ) {
-        AnimatedVisibility(//Анімація додавання першого файлу
+    Column(modifier = Modifier.fillMaxWidth()) {
+        AnimatedVisibility(
             visible = attachedFiles.isNotEmpty(),
-            enter = fadeIn(tween(300)) + expandVertically(tween(350)),
-            exit = fadeOut(tween(250)) + shrinkVertically(tween(350))
+            enter = fadeIn(tween(400)) + expandVertically(tween(400)),
+            exit = fadeOut(tween(400)) + shrinkVertically(tween(400))
         ) {
             LazyRow(
                 modifier = Modifier
@@ -462,13 +510,7 @@ private fun ChatInputRow(
                 items(items = currentFiles, key = { it.absolutePath }) { file ->
                     val isImage = file.extension.lowercase() in listOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
 
-                    Box(//Анімація кожного файлу при додаванні та видаленні
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(300),
-                            fadeOutSpec = tween(300),
-                            placementSpec = tween(300)
-                        )
-                    ) {
+                    Box(modifier = Modifier.animateItemPlacement(tween(300))) {
                         if (isImage) {
                             var bitmap by remember(file) { mutableStateOf<ImageBitmap?>(null) }
                             LaunchedEffect(file) {
@@ -476,9 +518,7 @@ private fun ChatInputRow(
                                     withContext(Dispatchers.IO) {
                                         FileInputStream(file).use { bitmap = loadImageBitmap(it) }
                                     }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
+                                } catch (e: Exception) { e.printStackTrace() }
                             }
 
                             Box(modifier = Modifier.size(64.dp)) {
@@ -495,18 +535,16 @@ private fun ChatInputRow(
                                                     if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
                                                         java.awt.Desktop.getDesktop().open(file)
                                                     }
-                                                } catch (e: Exception) {
-                                                    e.printStackTrace()
-                                                }
+                                                } catch (e: Exception) { e.printStackTrace() }
                                             }
                                             .pointerHoverIcon(PointerIcon.Hand)
-                                            .border(BorderStroke(1.dp, Color(0xFF2F3336)), RoundedCornerShape(12.dp))
                                     )
                                 } else {
                                     Box(
-                                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0xFF2B2D31))
-                                    )
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF2B2D31)))
                                 }
 
                                 Box(
@@ -519,12 +557,7 @@ private fun ChatInputRow(
                                         .pointerHoverIcon(PointerIcon.Hand),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Remove",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.Black, modifier = Modifier.size(14.dp))
                                 }
                             }
                         } else {
@@ -540,9 +573,7 @@ private fun ChatInputRow(
                                                 if (java.awt.Desktop.isDesktopSupported() && file.exists()) {
                                                     java.awt.Desktop.getDesktop().open(file)
                                                 }
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                            }
+                                            } catch (e: Exception) { e.printStackTrace() }
                                         }
                                         .pointerHoverIcon(PointerIcon.Hand)
                                 ) {
@@ -550,23 +581,9 @@ private fun ChatInputRow(
                                         modifier = Modifier.padding(horizontal = 16.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = DocumentIcon,
-                                            contentDescription = "File",
-                                            tint = Color(0xFF949BA4),
-                                            modifier = Modifier.size(24.dp)
-                                        )
+                                        Icon(imageVector = DocumentIcon, contentDescription = "File", tint = Color(0xFF949BA4), modifier = Modifier.size(24.dp))
                                         Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = file.name,
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            fontFamily = FontFamily.SansSerif,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 140.dp)
-                                        )
+                                        Text(text = file.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
                                     }
                                 }
 
@@ -580,12 +597,7 @@ private fun ChatInputRow(
                                         .pointerHoverIcon(PointerIcon.Hand),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Remove", tint = Color.Black, modifier = Modifier.size(14.dp))
                                 }
                             }
                         }
@@ -593,6 +605,7 @@ private fun ChatInputRow(
                 }
             }
         }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -636,9 +649,9 @@ private fun ChatInputRow(
                                 true
                             } else {
                                 if (!isLoading && (textFieldValue.text.isNotBlank() || attachedFiles.isNotEmpty())) {
-                                    onSend(attachedFiles)
+                                    onSend(attachedFiles, selectedModel)
                                     attachedFiles = emptyList()
-                                    displayFiles = emptyList() // Очищаємо пам'ять файлів
+                                    displayFiles = emptyList()
                                 }
                                 true
                             }
@@ -648,7 +661,7 @@ private fun ChatInputRow(
                     },
                 placeholder = {
                     Crossfade(
-                        targetState = placeholders[currentIndex],
+                        targetState = "${placeholders[currentIndex]}",
                         animationSpec = tween(durationMillis = 850),
                         label = "placeholder_animation"
                     ) { text ->
@@ -658,29 +671,65 @@ private fun ChatInputRow(
                 trailingIcon = {
                     val isInputActive = textFieldValue.text.isNotBlank() || attachedFiles.isNotEmpty()
 
-                    if (isLoading) {
-                        MoonlightTypingIndicator(
-                            modifier = Modifier.padding(end = 6.dp)
-                        )
-                    } else {
-                        CircleIconButton(
-                            icon = Icons.Default.Send,
-                            onClick = {
-                                if (isInputActive) {
-                                    onSend(attachedFiles)
-                                    attachedFiles = emptyList()
-                                    displayFiles = emptyList() // Очищаємо пам'ять файлів
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        if (isLoading) {
+                            MoonlightTypingIndicator()
+                        } else {
+                            //кнопка вибору моделі
+                            Box {
+                                IconButton(
+                                    onClick = { menuExpanded = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu,
+                                        contentDescription = "Change Model",
+                                        tint = Color(0xFF71767B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
-                            },
-                            tint = if (isInputActive) Color.White else Color(0xFF71767B),
-                            enabled = isInputActive,
-                            modifier = Modifier
-                                .padding(end = 6.dp)
-                                .then(
-                                    if (isInputActive) Modifier.pointerHoverIcon(PointerIcon.Hand)
-                                    else Modifier
+
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false },
+                                    modifier = Modifier.background(Color(0xFF2B2D31))
+                                ) {
+                                    DropdownMenuItem(onClick = {
+                                        selectedModel = "Gemini 3.1 Flash_Lite"
+                                        menuExpanded = false
+                                    }) {
+                                        Text("Gemini 3.1 Flash_Lite", color = if (selectedModel == "Gemini 3.1 Flash_Lite") Color.White else Color(0xFF949BA4), fontSize = 13.sp)
+                                    }
+                                    DropdownMenuItem(onClick = {
+                                        selectedModel = "Gemma 4"
+                                        menuExpanded = false
+                                    }) {
+                                        Text("Gemma 4", color = if (selectedModel == "Gemma 4") Color.White else Color(0xFF949BA4), fontSize = 13.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            CircleIconButton(
+                                icon = Icons.Default.Send,
+                                onClick = {
+                                    if (isInputActive) {
+                                        onSend(attachedFiles, selectedModel)
+                                        attachedFiles = emptyList()
+                                        displayFiles = emptyList()
+                                    }
+                                },
+                                tint = if (isInputActive) Color.White else Color(0xFF71767B),
+                                enabled = isInputActive,
+                                modifier = Modifier.then(
+                                    if (isInputActive) Modifier.pointerHoverIcon(PointerIcon.Hand) else Modifier
                                 )
-                        )
+                            )
+                        }
                     }
                 },
                 shape = RoundedCornerShape(24.dp),
@@ -1083,7 +1132,7 @@ private fun SingleColumnChat(
     messages: List<ChatMessage>,
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: (List<File>) -> Unit,
+    onSend: (List<File>, String) -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     errorText: String? = null
@@ -1097,8 +1146,10 @@ private fun SingleColumnChat(
     }
     LaunchedEffect(messages.lastOrNull()?.text?.length) {
         if (isLoading) {
-            scrollState.scrollTo(scrollState.maxValue)
+            if (scrollState.maxValue - scrollState.value < 300){
+            scrollState.animateScrollTo(scrollState.maxValue)
         }
+    }
     }
 
     Crossfade(
@@ -1158,15 +1209,19 @@ private fun SingleColumnChat(
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
 
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(scrollState)
-                                .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 24.dp)
-                        ) {
-                            messages.forEach { message ->
-                                MessageBubble(message = message)
-                                Spacer(modifier = Modifier.height(10.dp))
+                        SelectionContainer {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(scrollState)
+                                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 24.dp)
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    messages.forEach { message ->
+                                        MessageBubble(message = message)
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                    }
+                                }
                             }
                         }
 
@@ -1206,14 +1261,9 @@ private fun MessageBubble(message: ChatMessage) {
     val clipboardManager = LocalClipboardManager.current
 
     val columnModifier = if (isUser) {
-        Modifier
-            .wrapContentWidth()
-            .widthIn(max = 680.dp)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+        Modifier.wrapContentWidth().widthIn(max = 680.dp)
     } else {
-        Modifier
-            .fillMaxWidth()
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth()
     }
 
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = align) {
@@ -1221,20 +1271,28 @@ private fun MessageBubble(message: ChatMessage) {
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             modifier = columnModifier
         ) {
-            SelectionContainer {
-                Surface(
-                    color = bubbleColor,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()
-                ) {
+            Surface(
+                color = bubbleColor,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, borderColor),
+                modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+
                     Column(
                         modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 10.dp,
+                                bottom = if (isUser) 10.dp else 0.dp
+                            )
                             .then(
                                 if (isUser) Modifier.widthIn(max = 648.dp)
                                 else Modifier.fillMaxWidth()
                             )
                     ) {
+                        // --- ВІДОБРАЖЕННЯ ФАЙЛІВ ---
                         if (message.attachmentPaths.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
@@ -1284,7 +1342,6 @@ private fun MessageBubble(message: ChatMessage) {
                                             }
                                         }
                                     } else {
-                                        // КАРТКА ДЛЯ ФАЙЛІВ
                                         Surface(
                                             color = if (isUser) Color(0xFF2B2D31) else Color(0xFF1E1F22),
                                             shape = RoundedCornerShape(12.dp),
@@ -1303,7 +1360,7 @@ private fun MessageBubble(message: ChatMessage) {
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxSize()
-                                                    .padding(6.dp), // Зменшили відступи
+                                                    .padding(6.dp),
                                                 verticalArrangement = Arrangement.Center,
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
@@ -1332,6 +1389,7 @@ private fun MessageBubble(message: ChatMessage) {
                             }
                         }
 
+                        // --- ВІДОБРАЖЕННЯ ТЕКСТУ ---
                         if (message.text.isNotBlank()) {
                             val parts = message.text.split("```")
                             parts.forEachIndexed { index, part ->
@@ -1369,15 +1427,22 @@ private fun MessageBubble(message: ChatMessage) {
                             }
                         }
                     }
+
+                    if (!isUser) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 8.dp, bottom = 4.dp),
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            CircleIconButton(
+                                painter = painterResource("/images/copy_icon.svg"),
+                                onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
+                                tint = Color(0xFF71767B), buttonSize = 32.dp, iconSize = 16.dp
+                            )
+                        }
+                    }
                 }
-            }
-            if (!isUser) {
-                Spacer(modifier = Modifier.height(4.dp))
-                CircleIconButton(
-                    painter = painterResource("/images/copy_icon.svg"),
-                    onClick = { clipboardManager.setText(AnnotatedString(message.text)) },
-                    tint = Color(0xFF71767B), buttonSize = 32.dp, iconSize = 16.dp
-                )
             }
         }
     }

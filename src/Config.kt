@@ -36,4 +36,22 @@ private fun fetchApiKey(): String {
     return inputKey
 }
 
+fun fetchOpenRouterKey(): String {
+    val envKey = System.getenv("OPENROUTER_API_KEY")
+    if (!envKey.isNullOrBlank()) return envKey
+
+    val envFile = File(".env")
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            if (line.startsWith("OPENROUTER_API_KEY=")) {
+                val keyFromFile = line.substringAfter("OPENROUTER_API_KEY=").trim()
+                if (keyFromFile.isNotEmpty()) return keyFromFile
+            }
+        }
+    }
+    return ""
+}
+
+val OpenRouterApiKey = fetchOpenRouterKey()
+
 val GeminiApiKey = fetchApiKey()
