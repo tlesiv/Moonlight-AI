@@ -67,7 +67,6 @@ fun saveChats(sessions: List<ChatSession>) {
         chatsToSave.forEach { session ->
             add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}")
             session.messages.forEach { message ->
-                // 🔥 НОВИЙ КОД ДЛЯ ЗБЕРЕЖЕННЯ: Кожен шлях шифруємо і склеюємо через ;
                 val attachStr = if (message.attachmentPaths.isNotEmpty()) {
                     message.attachmentPaths.joinToString(";") { encodeBase64(it) }
                 } else ""

@@ -182,104 +182,89 @@ fun ChatApp() {
             isLoading = true
 
             scope.launch {
-                if (modelName == "Gemini 3.1 Flash_Lite") {
-                    val apiKey = System.getenv("GEMINI_API_KEY").takeUnless { it.isNullOrBlank() }
-                        ?: GeminiApiKey.takeIf { it.isNotBlank() }
-                    val model = System.getenv("GEMINI_MODEL") ?: DefaultModel
+                val assistantMessage = newMessage("assistant", "")
+                messages.add(assistantMessage)
+                saveChats(sessions)
 
-                    if (apiKey.isNullOrBlank()) {
-                        messages.add(newMessage("assistant", "Missing GEMINI_API_KEY environment variable or GeminiApiKey constant."))
-                        saveChats(sessions)
-                        isLoading = false
-                        return@launch
-                    }
+                var currentText = ""
 
-                    if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 1) {
-                        val titleResult = withContext(Dispatchers.IO) {
-                            callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
-                        }
+                suspend fun runModel(targetModel: String): Result<Unit> {
+                    return if (targetModel == "Gemini 3.1 Flash_Lite") {
+                        val apiKey = System.getenv("GEMINI_API_KEY").takeUnless { it.isNullOrBlank() }
+                            ?: GeminiApiKey.takeIf { it.isNotBlank() }
+                        val model = System.getenv("GEMINI_MODEL") ?: DefaultModel
 
-                        if (titleResult.isSuccess) {
-                            val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
-                            val index = sessions.indexOfFirst { it.id == activeChat.id }
-                            if (index != -1) {
-                                sessions[index] = sessions[index].copy(title = newTitle)
+                        if (apiKey.isNullOrBlank()) return Result.failure(Exception("Missing Gemini API Key"))
+
+                        if ((activeChat.title.startsWith("Chat ") || activeChat.title == "New Chat") && messages.size == 2) {
+                            val titleResult = withContext(Dispatchers.IO) {
+                                callGeminiTitle(apiKey = apiKey, model = model, userMessage = trimmed)
                             }
-                            saveChats(sessions)
+                            if (titleResult.isSuccess) {
+                                val newTitle = titleResult.getOrNull().orEmpty().take(28).ifBlank { activeChat.title }
+                                val index = sessions.indexOfFirst { it.id == activeChat.id }
+                                if (index != -1) sessions[index] = sessions[index].copy(title = newTitle)
+                                saveChats(sessions)
+                            }
                         }
-                    }
 
-                    val assistantMessage = newMessage("assistant", "")
-                    messages.add(assistantMessage)
-                    saveChats(sessions)
+                        withContext(Dispatchers.IO) {
+                            callGeminiStream(apiKey = apiKey, model = model, history = messages.dropLast(1)) { chunk ->
+                                currentText += chunk
+                                withContext(Dispatchers.Main) {
+                                    val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                                    if (index != -1) messages[index] = messages[index].copy(text = currentText)
+                                }
+                            }
+                        }
+                    } else {
+                        val openRouterKey = System.getenv("OPENROUTER_API_KEY").takeUnless { it.isNullOrBlank() }
+                            ?: OpenRouterApiKey.takeIf { it.isNotBlank() }
 
-                    var currentText = ""
-                    val result = withContext(Dispatchers.IO) {
-                        callGeminiStream(apiKey = apiKey, model = model, history = messages.dropLast(1)) { chunk ->
-                            currentText += chunk
-                            withContext(Dispatchers.Main) {
-                                val index = messages.indexOfFirst { it.id == assistantMessage.id }
-                                if (index != -1) {
-                                    messages[index] = messages[index].copy(text = currentText)
+                        if (openRouterKey.isNullOrBlank()) return Result.failure(Exception("Missing OpenRouter API Key"))
+
+                        val openRouterModelId = when (targetModel) {
+                            "Gemma 4" -> "google/gemma-4-31b-it:free"
+                            else -> "google/gemma-4-31b-it:free"
+                        }
+
+                        withContext(Dispatchers.IO) {
+                            callOpenRouterStream(
+                                apiKey = openRouterKey,
+                                model = openRouterModelId,
+                                history = messages.dropLast(1)
+                            ) { chunk ->
+                                currentText += chunk
+                                withContext(Dispatchers.Main) {
+                                    val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                                    if (index != -1) messages[index] = messages[index].copy(text = currentText)
                                 }
                             }
                         }
                     }
+                }
+
+                var result = runModel(modelName)
+
+                if (result.isFailure) {
+                    val fallbackModel = if (modelName == "Gemini 3.1 Flash_Lite") "Gemma 4" else "Gemini 3.1 Flash_Lite"
+                    val exMsg = result.exceptionOrNull()?.message ?: "Unknown error"
+
+                    currentText = ">**Сервер $modelName тимчасово недоступний.**\n> *Перемикаюсь на резервну модель ($fallbackModel)...*\n\n"
+
+                    withContext(Dispatchers.Main) {
+                        val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                        if (index != -1) messages[index] = messages[index].copy(text = currentText)
+                    }
+
+                    result = runModel(fallbackModel)
 
                     if (result.isFailure) {
-                        val message = result.exceptionOrNull()?.message ?: "Unknown error"
-                        errorText = message
-                        val index = messages.indexOfFirst { it.id == assistantMessage.id }
-                        if (index != -1) {
-                            messages[index] = messages[index].copy(text = "Error: $message")
-                        }
-                    }
-                } else {
-                    val openRouterKey = System.getenv("OPENROUTER_API_KEY").takeUnless { it.isNullOrBlank() }
-                        ?: OpenRouterApiKey.takeIf { it.isNotBlank() }
-
-                    if (openRouterKey.isNullOrBlank()) {
-                        messages.add(newMessage("assistant", "Missing OPENROUTER_API_KEY environment variable or OpenRouterApiKey constant."))
-                        saveChats(sessions)
-                        isLoading = false
-                        return@launch
-                    }
-
-                    val assistantMessage = newMessage("assistant", "")
-                    messages.add(assistantMessage)
-                    saveChats(sessions)
-
-                    var currentText = ""
-                    val openRouterModelId = when (modelName) {
-                        //"DeepSeek V4 Flash" -> "deepseek/deepseek-v4-flash:free"
-                        //"Qwen 3 Coder" -> "qwen/qwen3-coder:free "
-                        //"Llama 3.3" -> "meta-llama/llama-3.3-70b-instruct:free"
-                        "Gemma 4" -> "google/gemma-4-31b-it:free"
-                        else -> "google/gemma-4-31b-it:free"
-                    }
-
-                    val result = withContext(Dispatchers.IO) {
-                        callOpenRouterStream(
-                            apiKey = openRouterKey,
-                            model = openRouterModelId,
-                            history = messages.dropLast(1)
-                        ) { chunk ->
-                            currentText += chunk
-                            withContext(Dispatchers.Main) {
-                                val index = messages.indexOfFirst { it.id == assistantMessage.id }
-                                if (index != -1) {
-                                    messages[index] = messages[index].copy(text = currentText)
-                                }
-                            }
-                        }
-                    }
-
-                    if (result.isFailure) {
-                        val message = result.exceptionOrNull()?.message ?: "Unknown error"
-                        errorText = message
-                        val index = messages.indexOfFirst { it.id == assistantMessage.id }
-                        if (index != -1) {
-                            messages[index] = messages[index].copy(text = "Error: $message")
+                        val finalExMsg = result.exceptionOrNull()?.message ?: "Unknown error"
+                        errorText = "Обидві моделі недоступні"
+                        withContext(Dispatchers.Main) {
+                            val index = messages.indexOfFirst { it.id == assistantMessage.id }
+                            if (index != -1) messages[index] = messages[index].copy(text = currentText + "❌ **Критична помилка резервної моделі:** $finalExMsg")
                         }
                     }
                 }
@@ -1277,8 +1262,9 @@ private fun MessageBubble(message: ChatMessage) {
                 border = BorderStroke(1.dp, borderColor),
                 modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-
+                // 🔥 ВИПРАВЛЕНО: Тепер Column підлаштовується під тип повідомлення і не розтягує текст користувача
+                Column(modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()) {
+                    // 1. Блок для тексту та файлів
                     Column(
                         modifier = Modifier
                             .padding(
@@ -1338,7 +1324,7 @@ private fun MessageBubble(message: ChatMessage) {
                                                 modifier = Modifier.size(200.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF16181C)),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                CircularProgressIndicator(color = Color(0xFF1D9BF0), strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                                                CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(26.dp))
                                             }
                                         }
                                     } else {
@@ -1421,18 +1407,146 @@ private fun MessageBubble(message: ChatMessage) {
                                     }
                                 } else {
                                     if (part.isNotEmpty()) {
-                                        Text(text = markdownToAnnotated(part), style = TextStyle(color = textColor, fontSize = 15.sp))
+                                        val markdownElements = remember(part) { parseMessageMarkdown(part, textColor) }
+
+                                        markdownElements.forEach { element ->
+                                            when (element) {
+                                                is MarkdownElement.Text -> {
+                                                    Text(
+                                                        text = element.annotatedString,
+                                                        style = TextStyle(color = textColor, fontSize = 15.sp),
+                                                        modifier = Modifier.padding(bottom = 6.dp)
+                                                    )
+                                                }
+                                                is MarkdownElement.Quote -> {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(IntrinsicSize.Min)
+                                                            .background(Color(0xFF1E1F22), RoundedCornerShape(8.dp))
+                                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(3.dp)
+                                                                .fillMaxHeight()
+                                                                .background(Color.White, RoundedCornerShape(4.dp))
+                                                        )
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Text(
+                                                            text = element.annotatedString,
+                                                            style = TextStyle(color = Color(0xFFA1A1AA), fontSize = 15.sp, fontStyle = FontStyle.Italic),
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(10.dp))
+                                                }
+                                                // 🔥 ОНОВЛЕНО: Повноцінний показ інтернет-зображень з робочою кнопкою закриття та гарним шрифтом
+                                                is MarkdownElement.Image -> {
+                                                    var isDismissed by remember(element.url) { mutableStateOf(false) }
+                                                    AnimatedVisibility(
+                                                        visible = !isDismissed,
+                                                        enter = fadeIn(tween(400)) + expandVertically(tween(400), expandFrom = Alignment.Top),
+                                                        exit = fadeOut(tween(400)) + shrinkVertically(tween(400), shrinkTowards = Alignment.Top)
+                                                    ){
+                                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                                            var bitmap by remember(element.url) { mutableStateOf<ImageBitmap?>(null) }
+                                                            var isError by remember(element.url) { mutableStateOf(false) }
+
+                                                            LaunchedEffect(element.url) {
+                                                                withContext(Dispatchers.IO) {
+                                                                    try {
+                                                                        java.net.URI(element.url).toURL().openStream().use { stream ->
+                                                                            bitmap = loadImageBitmap(stream)
+                                                                        }
+                                                                    } catch (e: Exception) {
+                                                                        e.printStackTrace()
+                                                                        isError = true
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .padding(vertical = 6.dp)
+                                                                    .widthIn(max = 500.dp)
+                                                                    .clip(RoundedCornerShape(12.dp))
+                                                                    .background(Color(0xFF16181C))
+                                                                    .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(12.dp))
+                                                            ) {
+                                                                if (bitmap != null) {
+                                                                    Image(
+                                                                        bitmap = bitmap!!,
+                                                                        contentDescription = element.alt,
+                                                                        contentScale = ContentScale.Fit,
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .clickable {
+                                                                                try {
+                                                                                    if (java.awt.Desktop.isDesktopSupported()) {
+                                                                                        java.awt.Desktop.getDesktop().browse(java.net.URI(element.url))
+                                                                                    }
+                                                                                } catch (e: Exception) { e.printStackTrace() }
+                                                                            }
+                                                                            .pointerHoverIcon(PointerIcon.Hand)
+                                                                    )
+                                                                } else if (isError) {
+                                                                    Row(
+                                                                        modifier = Modifier
+                                                                            .fillMaxWidth()
+                                                                            .background(Color(0xFF292525))
+                                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                                    ) {
+                                                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                                            Spacer(modifier = Modifier.width(10.dp))
+                                                                            Text(
+                                                                                text = "Не вдалося завантажити зображення",
+                                                                                color = Color.White,
+                                                                                fontSize = 14.sp,
+                                                                                fontFamily = FontFamily.SansSerif,
+                                                                                fontWeight = FontWeight.Medium
+                                                                            )
+                                                                        }
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.Close,
+                                                                            contentDescription = "Dismiss error",
+                                                                            tint = Color(0xFF71767B),
+                                                                            modifier = Modifier
+                                                                                .size(18.dp)
+                                                                                .clickable { isDismissed = true }
+                                                                                .pointerHoverIcon(PointerIcon.Hand)
+                                                                        )
+                                                                    }
+                                                                } else {
+                                                                    Box(
+                                                                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                                                                        contentAlignment = Alignment.Center
+                                                                    ) {
+                                                                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
+                                                                    }
+                                                                }
+                                                            }
+                                                            Spacer(modifier = Modifier.height(6.dp))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
+                    // 2. Блок для кнопки Copy (БЕЗ відступів у 16.dp)
                     if (!isUser) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 8.dp, bottom = 4.dp),
+                                .padding(start = 2.dp, bottom = 4.dp),
                             horizontalArrangement = Arrangement.Start
                         ) {
                             CircleIconButton(
@@ -1448,62 +1562,167 @@ private fun MessageBubble(message: ChatMessage) {
     }
 }
 
-private fun markdownToAnnotated(text: String): AnnotatedString {
-    val normalized = text.replace("\\n", "\n")
-    val lines = normalized.split('\n')
+sealed class MarkdownElement {
+    data class Text(val annotatedString: AnnotatedString) : MarkdownElement()
+    data class Quote(val annotatedString: AnnotatedString) : MarkdownElement()
+    data class Image(val alt: String, val url: String) : MarkdownElement()
+}
+//MARKDOWN
+private fun markdownInlineToAnnotated(part: String, textColor: Color): AnnotatedString {
     return buildAnnotatedString {
-        var inCodeBlock = false
-        lines.forEachIndexed { index, rawLine ->
-            val line = rawLine.trim()
-            if (line.startsWith("```")) {
-                inCodeBlock = !inCodeBlock
-                if (index != lines.lastIndex) append("\n")
-                return@forEachIndexed
-            }
-            if (inCodeBlock) {
-                withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) {
-                    append(rawLine)
-                }
-                if (index != lines.lastIndex) append("\n")
-                return@forEachIndexed
+        val lines = part.lines()
+
+        lines.forEachIndexed { lineIndex, rawLine ->
+            var currentLine = rawLine
+
+            // ---ЗАГОЛОВКИ---
+            var headingStyle = SpanStyle(color = textColor)
+            if (currentLine.startsWith("### ")) {
+                headingStyle = SpanStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                currentLine = currentLine.removePrefix("### ")
+            } else if (currentLine.startsWith("## ")) {
+                headingStyle = SpanStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                currentLine = currentLine.removePrefix("## ")
+            } else if (currentLine.startsWith("# ")) {
+                headingStyle = SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                currentLine = currentLine.removePrefix("# ")
             }
 
-            when {
-                line.startsWith("### ") -> appendHeading(line.drop(4), 16.sp)
-                line.startsWith("## ") -> appendHeading(line.drop(3), 18.sp)
-                line.startsWith("# ") -> appendHeading(line.drop(2), 20.sp)
-                line.startsWith(">") -> {
-                    withStyle(SpanStyle(
-                        background = Color(0xFFF3F4F6), // Світло-сірий фон
-                        color = Color(0xFF4B5563),      // Темно-сірий текст
-                        fontStyle = FontStyle.Italic
-                    )) {
-                        append(" ┃ ")
-                        appendInlineMarkdown(line.drop(1).trim())
-                    }
-                }
-                line.matches(Regex("\\d+\\.\\s+.*")) -> {
-                    val split = line.indexOf('.')
-                    append(line.substring(0, split + 1))
-                    append(' ')
-                    appendInlineMarkdown(line.substring(split + 1).trim())
-                }
-                line.startsWith("- ") || line.startsWith("* ") -> {
-                    append("• ")
-                    appendInlineMarkdown(line.drop(2))
-                }
-                line.contains("|") && line.trim().startsWith("|") -> {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) {
-                        append(rawLine)
-                    }
-                }
-                else -> appendInlineMarkdown(rawLine)
+            // ---CПИСКИ---
+            if (currentLine.startsWith("* ")) {
+                currentLine = "• " + currentLine.removePrefix("* ")
+            } else if (currentLine.startsWith("- ")) {
+                currentLine = "• " + currentLine.removePrefix("- ")
             }
-            if (index != lines.lastIndex) {
-                append("\n")
+
+            withStyle(headingStyle) {
+                var remaining = currentLine
+                while (remaining.isNotEmpty()) {
+                    val boldItalicMatch = "(^|[^\\\\])\\*\\*\\*(.*?)\\*\\*\\*".toRegex().find(remaining)
+                    val boldMatch = "(^|[^\\\\])\\*\\*(.*?)\\*\\*".toRegex().find(remaining)
+                    val italicMatch = "(^|[^\\\\])\\*(.*?)\\*".toRegex().find(remaining)
+                    val strikeMatch = "(^|[^\\\\])~~(.*?)~~".toRegex().find(remaining)
+                    val codeMatch = "(^|[^\\\\])`(.*?)`".toRegex().find(remaining)
+                    val imageMatch = "(^|[^\\\\])!\\[(.*?)\\]\\((.*?)\\)".toRegex().find(remaining)
+                    val linkMatch = "(^|[^\\\\])\\[(.*?)\\]\\((.*?)\\)".toRegex().find(remaining)
+                    val urlMatch = "(https?://[\\w/\\-?.%=&]+)".toRegex().find(remaining)
+
+                    val matches = listOfNotNull(
+                        boldItalicMatch, boldMatch, italicMatch, strikeMatch,
+                        codeMatch, imageMatch, linkMatch, urlMatch
+                    )
+
+                    val firstMatch = matches.minByOrNull { it.range.first }
+
+                    if (firstMatch == null) {
+                        append(unescapeMarkdown(remaining))
+                        break
+                    }
+
+                    val beforeMatch = remaining.substring(0, firstMatch.range.first)
+                    append(unescapeMarkdown(beforeMatch))
+
+                    when (firstMatch) {
+                        boldItalicMatch -> {
+                            append(unescapeMarkdown(boldItalicMatch.groupValues[1]))
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) { append(unescapeMarkdown(boldItalicMatch.groupValues[2])) }
+                        }
+                        boldMatch -> {
+                            append(unescapeMarkdown(boldMatch.groupValues[1]))
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(unescapeMarkdown(boldMatch.groupValues[2])) }
+                        }
+                        italicMatch -> {
+                            append(unescapeMarkdown(italicMatch.groupValues[1]))
+                            withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(unescapeMarkdown(italicMatch.groupValues[2])) }
+                        }
+                        strikeMatch -> {
+                            append(unescapeMarkdown(strikeMatch.groupValues[1]))
+                            withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough, color = textColor.copy(alpha = 0.7f))) { append(unescapeMarkdown(strikeMatch.groupValues[2])) }
+                        }
+                        codeMatch -> {
+                            append(unescapeMarkdown(codeMatch.groupValues[1]))
+                            withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0xFF2B2D31), color = Color(0xFFE3E5E8), fontSize = 14.sp)) { append(" " + unescapeMarkdown(codeMatch.groupValues[2]) + " ") }
+                        }
+                        imageMatch -> {
+                            append(unescapeMarkdown(imageMatch.groupValues[1]))
+                            withStyle(SpanStyle(color = Color(0xFF949BA4), fontStyle = FontStyle.Italic)) {
+                                append("[Зображення: ${unescapeMarkdown(imageMatch.groupValues[2])}]")
+                            }
+                        }
+                        linkMatch -> {
+                            append(unescapeMarkdown(linkMatch.groupValues[1]))
+                            val linkText = unescapeMarkdown(linkMatch.groupValues[2])
+                            val url = linkMatch.groupValues[3]
+                            val start = this.length
+                            append(linkText)
+                            val end = this.length
+                            addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                        }
+                        urlMatch -> {
+                            val url = urlMatch.value
+                            val start = this.length
+                            append(unescapeMarkdown(url))
+                            val end = this.length
+                            addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color(0xFF38BDF8), textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                        }
+                    }
+
+                    remaining = remaining.substring(firstMatch.range.last + 1)
+                }
             }
+            if (lineIndex < lines.lastIndex) append('\n')
         }
     }
+}
+
+// 🔥 ОНОВЛЕНО: Парсер тепер ділить текст на звичайний, цитати та блоки інтернет-картинок
+private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownElement> {
+    val lines = part.lines()
+    val elements = mutableListOf<MarkdownElement>()
+    var currentTextBuffer = StringBuilder()
+    var currentQuoteBuffer = StringBuilder()
+    var inQuote = false
+
+    fun flush() {
+        if (currentTextBuffer.isNotEmpty()) {
+            val text = currentTextBuffer.toString().trimEnd('\n')
+            if (text.isNotEmpty()) elements.add(MarkdownElement.Text(markdownInlineToAnnotated(text, textColor)))
+            currentTextBuffer = StringBuilder()
+        }
+        if (currentQuoteBuffer.isNotEmpty()) {
+            val quote = currentQuoteBuffer.toString().trimEnd('\n')
+            if (quote.isNotEmpty()) elements.add(MarkdownElement.Quote(markdownInlineToAnnotated(quote, textColor)))
+            currentQuoteBuffer = StringBuilder()
+        }
+    }
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        val imgRegex = """^!\[(.*?)\]\((.*?)\)$""".toRegex()
+        val imgMatch = imgRegex.find(trimmed)
+
+        if (line.startsWith(">")) {
+            if (!inQuote) {
+                flush()
+                inQuote = true
+            }
+            currentQuoteBuffer.append(line.drop(1).trim()).append('\n')
+        } else if (imgMatch != null) {
+            flush()
+            inQuote = false
+            val alt = imgMatch.groupValues[1]
+            val url = imgMatch.groupValues[2]
+            elements.add(MarkdownElement.Image(alt, url))
+        } else {
+            if (inQuote) {
+                flush()
+                inQuote = false
+            }
+            currentTextBuffer.append(line).append('\n')
+        }
+    }
+    flush()
+    return elements
 }
 val AttachmentIcon: ImageVector
     get() = ImageVector.Builder(
@@ -1658,4 +1877,15 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
         }
         i += 1
     }
+}
+private fun unescapeMarkdown(text: String): String {
+    return text.replace("\\*", "*")
+        .replace("\\~", "~")
+        .replace("\\`", "`")
+        .replace("\\[", "[")
+        .replace("\\]", "]")
+        .replace("\\(", "(")
+        .replace("\\)", ")")
+        .replace("\\>", ">")
+        .replace("\\\\", "\\")
 }
