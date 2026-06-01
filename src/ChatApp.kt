@@ -671,7 +671,7 @@ private fun ChatInputRow(
                         if (isLoading) {
                             MoonlightTypingIndicator()
                         } else {
-                            //Кнопка вибору моделі
+                            //---------КНОПКА ВИБОРУ МОДЕЛІ----------
                             Box(contentAlignment = Alignment.Center) {
                                 val modelInteractionSource = remember { MutableInteractionSource() }
                                 val isModelHovered by modelInteractionSource.collectIsHoveredAsState()
@@ -1295,7 +1295,7 @@ fun AnimatedChatMenu(
             ) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF2B2D31),
+                    color = Color(0xFF1E1F22),
                     border = BorderStroke(1.dp, Color(0xFF3F4147)),
                     elevation = 8.dp,
                     modifier = Modifier.width(200.dp)
