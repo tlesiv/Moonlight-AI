@@ -60,6 +60,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
@@ -74,13 +75,16 @@ import io.github.vinceglb.filekit.core.PickerType
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -95,6 +99,9 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import java.io.FileInputStream
 
 val borderColor = Color(0xFF2F3336)
@@ -419,7 +426,8 @@ private fun ChatInputRow(
     input: String,
     onInputChange: (String) -> Unit,
     onSend: (List<File>, String) -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isNewChat: Boolean = false
 ) {
     val placeholders = listOf(
         "What's on your mind?",
@@ -663,36 +671,241 @@ private fun ChatInputRow(
                         if (isLoading) {
                             MoonlightTypingIndicator()
                         } else {
-                            //кнопка вибору моделі
-                            Box {
-                                IconButton(
-                                    onClick = { menuExpanded = true },
-                                    modifier = Modifier.size(28.dp)
+                            //Кнопка вибору моделі
+                            Box(contentAlignment = Alignment.Center) {
+                                val modelInteractionSource = remember { MutableInteractionSource() }
+                                val isModelHovered by modelInteractionSource.collectIsHoveredAsState()
+                                val scope = rememberCoroutineScope()
+
+                                val menuTransitionState = remember { MutableTransitionState(false) }
+                                menuTransitionState.targetState = menuExpanded
+
+                                val bgColor by animateColorAsState(
+                                    targetValue = when {
+                                        menuExpanded || menuTransitionState.currentState -> Color(0xFF2B2D31)
+                                        isModelHovered -> Color(0xFF272B35)
+                                        else -> Color(0xFF16181C)
+                                    },
+                                    animationSpec = tween(200)
+                                )
+                                val borderColorState by animateColorAsState(
+                                    targetValue = if (menuExpanded || menuTransitionState.currentState) Color(0xFF4A5270) else Color(0xFF2F3336),
+                                    animationSpec = tween(200)
+                                )
+                                val textColorState by animateColorAsState(
+                                    targetValue = if (isModelHovered || menuExpanded || menuTransitionState.currentState) Color.White else Color(0xFF949BA4),
+                                    animationSpec = tween(200)
+                                )
+                                val iconRotation by animateFloatAsState(
+                                    targetValue = if (menuExpanded || menuTransitionState.currentState) 180f else 0f,
+                                    animationSpec = tween(300)
+                                )
+
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .background(bgColor, RoundedCornerShape(15.dp))
+                                        .border(1.dp, borderColorState, RoundedCornerShape(15.dp))
+                                        .clickable(
+                                            interactionSource = modelInteractionSource,
+                                            indication = null
+                                        ) { menuExpanded = !menuExpanded }
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                        .animateContentSize(tween(300))
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Menu,
-                                        contentDescription = "Change Model",
-                                        tint = Color(0xFF71767B),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        //Крапка біля моделі
+//                                            Box(
+//                                                modifier = Modifier
+//                                                    .size(6.dp)
+//                                                  .background(if (menuExpanded || menuTransitionState.currentState || isModelHovered) Color.White else Color(0xFF949BA4), CircleShape)
+//                                            )
+                                            Crossfade(
+                                                targetState = selectedModel,
+                                                animationSpec = tween(300)
+                                            ) { model ->
+                                                Text(
+                                                    text = model,
+                                                    color = textColorState,
+                                                    fontSize = 11.sp,
+                                                    lineHeight = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                    )
+                                            }
+
+
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = textColorState,
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .rotate(iconRotation)
+                                        )
+                                    }
                                 }
 
-                                DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                    modifier = Modifier.background(Color(0xFF2B2D31))
-                                ) {
-                                    DropdownMenuItem(onClick = {
-                                        selectedModel = "Gemini 3.1 Flash_Lite"
-                                        menuExpanded = false
-                                    }) {
-                                        Text("Gemini 3.1 Flash_Lite", color = if (selectedModel == "Gemini 3.1 Flash_Lite") Color.White else Color(0xFF949BA4), fontSize = 13.sp)
+                                val popupPositionProvider = remember(isNewChat) {
+                                    object : androidx.compose.ui.window.PopupPositionProvider {
+                                        override fun calculatePosition(
+                                            anchorBounds: IntRect,
+                                            windowSize: IntSize,
+                                            layoutDirection: LayoutDirection,
+                                            popupContentSize: IntSize
+                                        ): IntOffset {
+                                            val x = anchorBounds.left + (anchorBounds.width - popupContentSize.width) / 2
+
+                                            val y = if (isNewChat) {
+                                                anchorBounds.bottom + 12
+                                            } else {
+                                                anchorBounds.top - popupContentSize.height - 12
+                                            }
+                                            return IntOffset(x, y)
+                                        }
                                     }
-                                    DropdownMenuItem(onClick = {
-                                        selectedModel = "Gemma 4"
-                                        menuExpanded = false
-                                    }) {
-                                        Text("Gemma 4", color = if (selectedModel == "Gemma 4") Color.White else Color(0xFF949BA4), fontSize = 13.sp)
+                                }
+
+                                if (menuExpanded || menuTransitionState.currentState || menuTransitionState.targetState) {
+                                    Popup(
+                                        popupPositionProvider = popupPositionProvider,
+                                        onDismissRequest = { menuExpanded = false },
+                                        properties = PopupProperties(focusable = true)
+                                    ) {
+                                        Column {
+                                            AnimatedVisibility(
+                                                visibleState = menuTransitionState,
+                                                enter = fadeIn(tween(300)) + slideInVertically(
+                                                    animationSpec = tween(300),
+                                                    initialOffsetY = { if (isNewChat) -30 else 30 }
+                                                ),
+                                                exit = fadeOut(tween(200)) + slideOutVertically(
+                                                    animationSpec = tween(200),
+                                                    targetOffsetY = { if (isNewChat) -15 else 15 }
+                                                )
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = Color(0xFF1E1F22),
+                                                    border = BorderStroke(1.dp, Color(0xFF2F3336)),
+                                                    elevation = 8.dp,
+                                                    modifier = Modifier.width(240.dp)
+                                                ) {
+                                                    Column(modifier = Modifier.padding(bottom = 6.dp)) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(horizontal = 14.dp)
+                                                                .padding(top = 10.dp, bottom = 8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "AI MODEL",
+                                                                color = Color(0xFF71767B),
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                letterSpacing = 1.sp
+                                                            )
+                                                        }
+                                                        Divider(color = Color(0xFF2F3336), thickness = 1.dp)
+                                                        Spacer(Modifier.height(4.dp))
+
+                                                        listOf(
+                                                            "Gemini 3.1 Flash_Lite" to "Fast & efficient",
+                                                            "Gemma 4" to "Advanced reasoning"
+                                                        ).forEach { (model, description) ->
+                                                            val isSelected = selectedModel == model
+
+                                                            val itemInteractionSource = remember { MutableInteractionSource() }
+                                                            val isItemHovered by itemInteractionSource.collectIsHoveredAsState()
+
+                                                            val itemBgColor by animateColorAsState(
+                                                                targetValue = when {
+                                                                    isSelected -> Color(0xFF2B2D31)
+                                                                    isItemHovered -> Color(0xFF25272B)
+                                                                    else -> Color.Transparent
+                                                                },
+                                                                animationSpec = tween(200)
+                                                            )
+
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                                    .height(56.dp)
+                                                                    .background(itemBgColor, RoundedCornerShape(12.dp))
+                                                                    .clickable(
+                                                                        interactionSource = itemInteractionSource,
+                                                                        indication = null
+                                                                    ) {
+                                                                        selectedModel = model
+                                                                        scope.launch {
+                                                                            kotlinx.coroutines.delay(150)
+                                                                            menuExpanded = false
+                                                                        }
+                                                                    }
+                                                                    .pointerHoverIcon(PointerIcon.Hand),
+                                                                contentAlignment = Alignment.CenterStart
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .padding(horizontal = 14.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    // RadioButton
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(16.dp)
+                                                                            .border(
+                                                                                width = 2.dp,
+                                                                                color = if (isSelected) Color.White else Color(0xFF4A5270),
+                                                                                shape = CircleShape
+                                                                            ),
+                                                                        contentAlignment = Alignment.Center
+                                                                    ) {
+                                                                        androidx.compose.animation.AnimatedVisibility(
+                                                                            visible = isSelected,
+                                                                            enter = scaleIn(tween(200)) + fadeIn(tween(200)),
+                                                                            exit = scaleOut(tween(200)) + fadeOut(tween(200))
+                                                                        ) {
+                                                                            Box(
+                                                                                modifier = Modifier
+                                                                                    .size(8.dp)
+                                                                                    .background(Color.White, CircleShape)
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                    Spacer(Modifier.width(14.dp))
+
+                                                                    Column(
+                                                                        modifier = Modifier.weight(1f),
+                                                                        verticalArrangement = Arrangement.Center
+                                                                    ) {
+                                                                        Text(
+                                                                            text = model,
+                                                                            color = if (isSelected) Color.White else Color(0xFF949BA4),
+                                                                            fontSize = 13.sp,
+                                                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                                                        )
+                                                                        Text(
+                                                                            text = description,
+                                                                            color = Color(0xFF71767B),
+                                                                            fontSize = 10.sp
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1072,39 +1285,41 @@ fun AnimatedChatMenu(
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = false)
     ) {
-        AnimatedVisibility(
-            visibleState = transitionState,
-            enter = fadeIn(tween(500))+ slideInVertically(
-                animationSpec = tween(200),
-                initialOffsetY = { -20 }),
-            exit = fadeOut(tween(300))
-        ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF2B2D31),
-                border = BorderStroke(1.dp, Color(0xFF3F4147)),
-                elevation = 8.dp,
-                modifier = Modifier.width(200.dp)
+        Column {
+            AnimatedVisibility(
+                visibleState = transitionState,
+                enter = fadeIn(tween(500)) + slideInVertically(
+                    animationSpec = tween(200),
+                    initialOffsetY = { -20 }),
+                exit = fadeOut(tween(300))
             ) {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    DropdownMenuItem(onClick = onRename) {
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text("Rename", color = Color.White, fontSize = 14.sp)
-                    }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF2B2D31),
+                    border = BorderStroke(1.dp, Color(0xFF3F4147)),
+                    elevation = 8.dp,
+                    modifier = Modifier.width(200.dp)
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        DropdownMenuItem(onClick = onRename) {
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Rename", color = Color.White, fontSize = 14.sp)
+                        }
 
-                    DropdownMenuItem(onClick = onTogglePin) {
-                        val pinIcon = if (session.isPinned) "/images/unpin_icon.svg" else "/images/pin_icon.svg"
-                        val text = if (session.isPinned) "Unpin" else "Pin"
-                        Icon(painterResource(pinIcon), contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(text, color = Color.White, fontSize = 14.sp)
-                    }
+                        DropdownMenuItem(onClick = onTogglePin) {
+                            val pinIcon = if (session.isPinned) "/images/unpin_icon.svg" else "/images/pin_icon.svg"
+                            val text = if (session.isPinned) "Unpin" else "Pin"
+                            Icon(painterResource(pinIcon), contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(text, color = Color.White, fontSize = 14.sp)
+                        }
 
-                    DropdownMenuItem(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text("Delete", color = Color.White, fontSize = 14.sp)
+                        DropdownMenuItem(onClick = onDelete) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Delete", color = Color.White, fontSize = 14.sp)
+                        }
                     }
                 }
             }
@@ -1132,9 +1347,9 @@ private fun SingleColumnChat(
     LaunchedEffect(messages.lastOrNull()?.text?.length) {
         if (isLoading) {
             if (scrollState.maxValue - scrollState.value < 300){
-            scrollState.animateScrollTo(scrollState.maxValue)
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
         }
-    }
     }
 
     Crossfade(
@@ -1174,7 +1389,7 @@ private fun SingleColumnChat(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    ChatInputRow(input, onInputChange, onSend, isLoading)
+                    ChatInputRow(input, onInputChange, onSend, isLoading, isNewChat = true)
                 }
             }
         } else {
@@ -1194,11 +1409,25 @@ private fun SingleColumnChat(
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
 
+                        val chatFocusRequester = remember { FocusRequester() }
+
                         SelectionContainer {
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(scrollState)
+                                    .focusRequester(chatFocusRequester)
+                                    .focusable()
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                if (event.type == PointerEventType.Press) {
+                                                    try { chatFocusRequester.requestFocus() } catch (e: Exception) {}
+                                                }
+                                            }
+                                        }
+                                    }
                                     .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 24.dp)
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -1230,7 +1459,7 @@ private fun SingleColumnChat(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                ChatInputRow(input, onInputChange, onSend, isLoading)
+                ChatInputRow(input, onInputChange, onSend, isLoading, isNewChat = false)
             }
         }
     }
@@ -1262,9 +1491,7 @@ private fun MessageBubble(message: ChatMessage) {
                 border = BorderStroke(1.dp, borderColor),
                 modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()
             ) {
-                // 🔥 ВИПРАВЛЕНО: Тепер Column підлаштовується під тип повідомлення і не розтягує текст користувача
                 Column(modifier = if (isUser) Modifier.wrapContentWidth() else Modifier.fillMaxWidth()) {
-                    // 1. Блок для тексту та файлів
                     Column(
                         modifier = Modifier
                             .padding(
@@ -1431,7 +1658,7 @@ private fun MessageBubble(message: ChatMessage) {
                                                             modifier = Modifier
                                                                 .width(3.dp)
                                                                 .fillMaxHeight()
-                                                                .background(Color.White, RoundedCornerShape(4.dp))
+                                                                .background(Color.White, RoundedCornerShape(8.dp))
                                                         )
                                                         Spacer(modifier = Modifier.width(10.dp))
                                                         Text(
@@ -1442,7 +1669,6 @@ private fun MessageBubble(message: ChatMessage) {
                                                     }
                                                     Spacer(modifier = Modifier.height(10.dp))
                                                 }
-                                                // 🔥 ОНОВЛЕНО: Повноцінний показ інтернет-зображень з робочою кнопкою закриття та гарним шрифтом
                                                 is MarkdownElement.Image -> {
                                                     var isDismissed by remember(element.url) { mutableStateOf(false) }
                                                     AnimatedVisibility(
@@ -1541,7 +1767,6 @@ private fun MessageBubble(message: ChatMessage) {
                         }
                     }
 
-                    // 2. Блок для кнопки Copy (БЕЗ відступів у 16.dp)
                     if (!isUser) {
                         Row(
                             modifier = Modifier
@@ -1675,7 +1900,6 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
     }
 }
 
-// 🔥 ОНОВЛЕНО: Парсер тепер ділить текст на звичайний, цитати та блоки інтернет-картинок
 private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownElement> {
     val lines = part.lines()
     val elements = mutableListOf<MarkdownElement>()
