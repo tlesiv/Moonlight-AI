@@ -25,7 +25,13 @@ fun loadChats(): List<ChatSession> {
                     val id = parts[1]
                     val title = decodeBase64(parts[2])
                     val isPinned = if (parts.size >= 4) parts[3].toBoolean() else false
+
+                    // 🔥 Завантажуємо збережений час (якщо це старий чат, ставимо поточний)
+                    val updatedAt = if (parts.size >= 5) parts[4].toLongOrNull() ?: System.currentTimeMillis() else System.currentTimeMillis()
+
                     current = newChatSessionWithId(id = id, title = title, isPinned = isPinned)
+                    // Відновлюємо правильний час для сортування
+                    current = current!!.copy(updatedAt = updatedAt)
                     sessions.add(current!!)
                 }
             }
@@ -59,13 +65,21 @@ fun loadChats(): List<ChatSession> {
 }
 
 fun saveChats(sessions: List<ChatSession>) {
-    val chatsToSave = sessions.filter { it.messages.isNotEmpty() }
+    // 1. Створюємо безпечну копію
+    val safeToSave = sessions.map { session ->
+        session.copy(messages = session.messages.toList().toMutableList())
+    }
+
+    // 2. 🔥 ВИПРАВЛЕННЯ: Фільтруємо safeToSave, а не sessions!
+    val chatsToSave = safeToSave.filter { it.messages.isNotEmpty() }
+
     val path = historyPath()
     Files.createDirectories(path.parent)
 
     val lines = buildList {
         chatsToSave.forEach { session ->
-            add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}")
+            // 🔥 Бонус: тепер зберігаємо ще й час (updatedAt)
+            add("CHAT|${session.id}|${encodeBase64(session.title)}|${session.isPinned}|${session.updatedAt}")
             session.messages.forEach { message ->
                 val attachStr = if (message.attachmentPaths.isNotEmpty()) {
                     message.attachmentPaths.joinToString(";") { encodeBase64(it) }

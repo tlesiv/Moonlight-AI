@@ -14,6 +14,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.7.3")
     implementation("io.github.vinceglb:filekit-compose:0.8.1")
+
+    implementation("org.scilab.forge:jlatexmath:1.0.7")
+    implementation("org.scilab.forge:jlatexmath:1.0.7")
+    implementation("org.scilab.forge:jlatexmath-font-cyrillic:1.0.7")
+    implementation("org.scilab.forge:jlatexmath-font-greek:1.0.7")
+
 }
 
 kotlin {

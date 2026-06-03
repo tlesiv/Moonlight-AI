@@ -83,7 +83,10 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
@@ -99,6 +102,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -187,6 +191,11 @@ fun ChatApp() {
             input = ""
             errorText = null
             isLoading = true
+
+            val activeIndex = sessions.indexOfFirst { it.id == activeChatId }
+            if (activeIndex != -1) {
+                sessions[activeIndex] = sessions[activeIndex].copy(updatedAt = System.currentTimeMillis())
+            }
 
             scope.launch {
                 val assistantMessage = newMessage("assistant", "")
@@ -306,7 +315,10 @@ fun ChatApp() {
         } else {
             Row(modifier = Modifier.fillMaxSize()) {
                 Sidebar(
-                    chats = sessions.sortedByDescending { it.isPinned },
+                    chats = sessions.sortedWith(
+                        compareByDescending<ChatSession> { it.isPinned }
+                            .thenByDescending { it.updatedAt } // Спочатку закріплені, потім – найсвіжіші
+                    ),
                     activeChatId = activeChatId,
                     onSelectChat = onSelectChat,
                     expandedMenuChatId = expandedMenuChatId,
@@ -725,20 +737,20 @@ private fun ChatInputRow(
 //                                                    .size(6.dp)
 //                                                  .background(if (menuExpanded || menuTransitionState.currentState || isModelHovered) Color.White else Color(0xFF949BA4), CircleShape)
 //                                            )
-                                            Crossfade(
-                                                targetState = selectedModel,
-                                                animationSpec = tween(300)
-                                            ) { model ->
-                                                Text(
-                                                    text = model,
-                                                    color = textColorState,
-                                                    fontSize = 11.sp,
-                                                    lineHeight = 12.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                    )
-                                            }
+                                        Crossfade(
+                                            targetState = selectedModel,
+                                            animationSpec = tween(300)
+                                        ) { model ->
+                                            Text(
+                                                text = model,
+                                                color = textColorState,
+                                                fontSize = 11.sp,
+                                                lineHeight = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
 
 
                                         Icon(
@@ -1639,12 +1651,26 @@ private fun MessageBubble(message: ChatMessage) {
                                         markdownElements.forEach { element ->
                                             when (element) {
                                                 is MarkdownElement.Text -> {
-                                                    Text(
+                                                    ClickableText(
                                                         text = element.annotatedString,
                                                         style = TextStyle(color = textColor, fontSize = 15.sp),
+                                                        onClick = { offset ->
+                                                            val link = element.annotatedString.getLinkAnnotations(offset, offset).firstOrNull()
+                                                            val url = (link?.item as? LinkAnnotation.Url)?.url
+
+                                                            if (url != null && isWebUrl(url)) {
+                                                                try { java.awt.Desktop.getDesktop().browse(java.net.URI(url)) } catch (_: Exception) {}
+                                                            }
+                                                        },
                                                         modifier = Modifier.padding(bottom = 6.dp)
                                                     )
                                                 }
+                                                is MarkdownElement.MathBlock -> {
+                                                    MathBlockView(formula = element.formula)
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                }
+
+
                                                 is MarkdownElement.Quote -> {
                                                     Row(
                                                         modifier = Modifier
@@ -1668,6 +1694,45 @@ private fun MessageBubble(message: ChatMessage) {
                                                         )
                                                     }
                                                     Spacer(modifier = Modifier.height(10.dp))
+                                                }
+                                                is MarkdownElement.HorizontalRule -> {
+                                                    Divider(
+                                                        color = Color(0xFF3F4147),
+                                                        thickness = 1.dp,
+                                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                                                    )
+                                                }
+                                                is MarkdownElement.Callout -> {
+                                                    val (bgColor, accentColor, icon) = when (element.type) {
+                                                        "info" -> Triple(Color(0xFF2B2D31), Color.White, Icons.Default.Info)
+                                                        "tip", "hint", "порада" -> Triple(Color(0xFF2B2D31), Color(0xFF10B981), Icons.Default.Info)
+                                                        "warning", "caution" -> Triple(Color(0xFF2B2D31), Color(0xFFFDE047), Icons.Default.Warning)
+                                                        "success", "check" -> Triple(Color(0xFF2B2D31), Color(0xFF34D399), Icons.Default.Check)
+                                                        "error", "danger", "bug" -> Triple(Color(0xFF2B2D31), Color(0xFFEF4444), Icons.Default.Warning)
+                                                        else -> Triple(Color(0xFF2B2D31), Color.White, Icons.Default.Info)
+                                                    }
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 4.dp)
+                                                            .background(bgColor, RoundedCornerShape(8.dp))
+                                                            .border(1.dp, accentColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                                            .padding(12.dp)
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Text(text = element.title, color = accentColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                        }
+                                                        if (element.annotatedString.text.isNotEmpty()) {
+                                                            Spacer(Modifier.height(4.dp))
+                                                            Text(
+                                                                text = element.annotatedString,
+                                                                style = TextStyle(color = Color(0xFFE7E9EA), fontSize = 14.sp, lineHeight = 20.sp)
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
                                                 }
                                                 is MarkdownElement.Image -> {
                                                     var isDismissed by remember(element.url) { mutableStateOf(false) }
@@ -1758,6 +1823,7 @@ private fun MessageBubble(message: ChatMessage) {
                                                             Spacer(modifier = Modifier.height(6.dp))
                                                         }
                                                     }
+
                                                 }
                                             }
                                         }
@@ -1791,37 +1857,59 @@ sealed class MarkdownElement {
     data class Text(val annotatedString: AnnotatedString) : MarkdownElement()
     data class Quote(val annotatedString: AnnotatedString) : MarkdownElement()
     data class Image(val alt: String, val url: String) : MarkdownElement()
+    data class Callout(val type: String, val title: String, val annotatedString: AnnotatedString) : MarkdownElement()
+    data class MathBlock(val formula: String) : MarkdownElement()
+    object HorizontalRule : MarkdownElement()
+}
+
+private fun isWebUrl(u: String): Boolean = u.startsWith("http://") || u.startsWith("https://")
+
+private fun wikiToWebUrl(target: String): String {
+    return "https://www.google.com/search?q=" + java.net.URLEncoder.encode(target, "UTF-8")
 }
 //MARKDOWN
+
 private fun markdownInlineToAnnotated(part: String, textColor: Color): AnnotatedString {
     return buildAnnotatedString {
         val lines = part.lines()
 
         lines.forEachIndexed { lineIndex, rawLine ->
-            var currentLine = rawLine
+            val currentLine = rawLine.trimStart()
 
-            // ---ЗАГОЛОВКИ---
+            // Заголовки
             var headingStyle = SpanStyle(color = textColor)
-            if (currentLine.startsWith("### ")) {
+            var processedLine = currentLine
+            if (currentLine.startsWith("###### ")) {
+                headingStyle = SpanStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF949BA4))
+                processedLine = currentLine.removePrefix("###### ")
+            } else if (currentLine.startsWith("##### ")) {
+                headingStyle = SpanStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD1D5DB))
+                processedLine = currentLine.removePrefix("##### ")
+            } else if (currentLine.startsWith("#### ")) {
+                headingStyle = SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                processedLine = currentLine.removePrefix("#### ")
+            } else if (currentLine.startsWith("### ")) {
                 headingStyle = SpanStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                currentLine = currentLine.removePrefix("### ")
+                processedLine = currentLine.removePrefix("### ")
             } else if (currentLine.startsWith("## ")) {
                 headingStyle = SpanStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                currentLine = currentLine.removePrefix("## ")
+                processedLine = currentLine.removePrefix("## ")
             } else if (currentLine.startsWith("# ")) {
                 headingStyle = SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                currentLine = currentLine.removePrefix("# ")
+                processedLine = currentLine.removePrefix("# ")
             }
 
-            // ---CПИСКИ---
-            if (currentLine.startsWith("* ")) {
-                currentLine = "• " + currentLine.removePrefix("* ")
-            } else if (currentLine.startsWith("- ")) {
-                currentLine = "• " + currentLine.removePrefix("- ")
+            // Списки
+            if (processedLine.startsWith("* ")) {
+                processedLine = "• " + processedLine.removePrefix("* ")
+            } else if (processedLine.startsWith("- ")) {
+                processedLine = "• " + processedLine.removePrefix("- ")
+            } else if (processedLine.startsWith("*") && !processedLine.startsWith("**") && !processedLine.drop(1).contains("*")) {
+                processedLine = "• " + processedLine.drop(1).trimStart()
             }
 
             withStyle(headingStyle) {
-                var remaining = currentLine
+                var remaining = processedLine
                 while (remaining.isNotEmpty()) {
                     val boldItalicMatch = "(^|[^\\\\])\\*\\*\\*(.*?)\\*\\*\\*".toRegex().find(remaining)
                     val boldMatch = "(^|[^\\\\])\\*\\*(.*?)\\*\\*".toRegex().find(remaining)
@@ -1832,9 +1920,18 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
                     val linkMatch = "(^|[^\\\\])\\[(.*?)\\]\\((.*?)\\)".toRegex().find(remaining)
                     val urlMatch = "(https?://[\\w/\\-?.%=&]+)".toRegex().find(remaining)
 
+                    val highlightMatch = "(^|[^\\\\])==(.*?)==".toRegex().find(remaining)
+                    val tagMatch = "(^|\\s)#([\\p{L}\\d_]+)".toRegex().find(remaining)
+                    val footnoteRefMatch = "(^|[^\\\\])\\[\\^([^\\)]+)\\]".toRegex().find(remaining)
+                    val wikiLinkMatch = "(^|[^\\\\])\\[\\[(.*?)\\]\\]".toRegex().find(remaining)
+                    val blockIdMatch = "(^|\\s)\\^([a-zA-Z0-9_\\-]+)".toRegex().find(remaining)
+
+                    val inlineMathMatch = "(^|[^\\\\])\\$([^\\$]+)\\$".toRegex().find(remaining)
+
                     val matches = listOfNotNull(
                         boldItalicMatch, boldMatch, italicMatch, strikeMatch,
-                        codeMatch, imageMatch, linkMatch, urlMatch
+                        codeMatch, imageMatch, linkMatch, urlMatch,
+                        highlightMatch, tagMatch, footnoteRefMatch, wikiLinkMatch, blockIdMatch, inlineMathMatch
                     )
 
                     val firstMatch = matches.minByOrNull { it.range.first }
@@ -1877,21 +1974,76 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
                         linkMatch -> {
                             append(unescapeMarkdown(linkMatch.groupValues[1]))
                             val linkText = unescapeMarkdown(linkMatch.groupValues[2])
-                            val url = linkMatch.groupValues[3]
+                            val url = linkMatch.groupValues[3].trim()
                             val start = this.length
                             append(linkText)
                             val end = this.length
-                            addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                            if (isWebUrl(url)) {
+                                addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                            }
                         }
                         urlMatch -> {
-                            val url = urlMatch.value
+                            val url = urlMatch.value.trim()
                             val start = this.length
-                            append(unescapeMarkdown(url))
+                            append(url)
                             val end = this.length
-                            addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color(0xFF38BDF8), textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                            if (isWebUrl(url)) {
+                                addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color(0xFF38BDF8), textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                            }
+                        }
+                        wikiLinkMatch -> {
+                            append(unescapeMarkdown(wikiLinkMatch.groupValues[1]))
+                            val raw = unescapeMarkdown(wikiLinkMatch.groupValues[2]).trim()
+                            val (target, alias) = raw.split("|", limit = 2).let { parts -> parts[0].trim() to parts.getOrNull(1)?.trim() }
+                            val display = alias?.takeIf { it.isNotBlank() } ?: target
+                            val url = wikiToWebUrl(target)
+                            val start = this.length
+                            append(display)
+                            val end = this.length
+                            addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                        }
+                        blockIdMatch -> {
+                            append(blockIdMatch.groupValues[1])
+                            withStyle(SpanStyle(color = Color(0xFFF59E0B), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)) {
+                                append("^" + blockIdMatch.groupValues[2])
+                            }
+                        }
+                        inlineMathMatch -> {
+                            append(unescapeMarkdown(inlineMathMatch.groupValues[1]))
+                            withStyle(SpanStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontStyle = FontStyle.Italic,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE3E5E8),
+                            )) {
+                                val rawMath = unescapeMarkdown(inlineMathMatch.groupValues[2])
+                                val prettyMath = prettifyInlineMath(rawMath)
+
+                                append(" ")
+                                appendMathWithScripts(prettyMath.trim())
+                                append(" ")
+                            }
+                        }
+
+                        highlightMatch -> {
+                            append(unescapeMarkdown(highlightMatch.groupValues[1]))
+                            withStyle(SpanStyle(background = Color(0xFF2F3336), color = Color.White)) {
+                                append(unescapeMarkdown(highlightMatch.groupValues[2]))
+                            }
+                        }
+                        tagMatch -> {
+                            append(tagMatch.groupValues[1])
+                            withStyle(SpanStyle(color = Color(0xFF949BA4))) {
+                                append("#" + tagMatch.groupValues[2])
+                            }
+                        }
+                        footnoteRefMatch -> {
+                            append(unescapeMarkdown(footnoteRefMatch.groupValues[1]))
+                            withStyle(SpanStyle(color = Color(0xFF71767B), fontSize = 11.sp, baselineShift = BaselineShift.Superscript)) {
+                                append("[^" + unescapeMarkdown(footnoteRefMatch.groupValues[2]) + "]")
+                            }
                         }
                     }
-
                     remaining = remaining.substring(firstMatch.range.last + 1)
                 }
             }
@@ -1899,8 +2051,118 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
         }
     }
 }
+private fun prettifyInlineMath(formula: String): String {
+    var s = formula
+    s = s.replace("\t" + "imes", "\\times")
+    s = s.replace("\t" + "ext", "\\text")
+    s = s.replace("\n" + "abl", "\\nabla")
+    s = s.replace("\r" + "ho", "\\rho")
+    s = s.replace("\u000C" + "rac", "\\frac")
+
+    s = s.replace("\\times", "×")
+    s = s.replace("\\cdot", "·")
+    s = s.replace("\\det", "det")
+    s = s.replace("\\leq", "≤")
+    s = s.replace("\\geq", "≥")
+    s = s.replace("\\neq", "≠")
+    s = s.replace("\\approx", "≈")
+    s = s.replace("\\pm", "±")
+    s = s.replace("\\infty", "∞")
+    s = s.replace("\\nabla", "∇")
+    s = s.replace("\\rho", "ρ")
+    s = s.replace("\\alpha", "α")
+    s = s.replace("\\beta", "β")
+    s = s.replace("\\pi", "π")
+    s = s.replace("\\mu", "μ")
+    s = s.replace("\\sigma", "σ")
+    s = s.replace("\\Delta", "Δ")
+
+    s = s.replace("\\left(", "(").replace("\\right)", ")")
+    s = s.replace("\\left[", "[").replace("\\right]", "]")
+    s = s.replace(Regex("""\\text\{([^}]*)\}"""), "$1")
+
+    return s
+}
+//Робить степінь
+private fun AnnotatedString.Builder.appendMathWithScripts(text: String) {
+    val scriptRegex = Regex("""([\^_])(?:\{([^}]+)\}|([a-zA-Z0-9+\-]))""")
+    var lastIndex = 0
+
+    for (match in scriptRegex.findAll(text)) {
+        val before = text.substring(lastIndex, match.range.first)
+        if (before.isNotEmpty()) append(before)
+
+        val isSuperscript = match.groupValues[1] == "^"
+        val content = match.groupValues[2].ifEmpty { match.groupValues[3] }
+
+        withStyle(SpanStyle(
+            baselineShift = if (isSuperscript) BaselineShift.Superscript else BaselineShift.Subscript,
+            fontSize = 11.sp,
+        )) {
+            append(content)
+        }
+        lastIndex = match.range.last + 1
+    }
+
+    val after = text.substring(lastIndex)
+    if (after.isNotEmpty()) append(after)
+}
+
+private fun normalizeLatexEscapes(input: String): String {
+    var s = input
+
+
+    s = s.replace("\n" + "abla", "\\nabla")
+    s = s.replace("\n" + "eq", "\\neq")
+    s = s.replace("\n" + "u", "\\nu")
+
+    s = s.replace("\r" + "ho", "\\rho")
+    s = s.replace("\r" + "ight", "\\right")
+    s = s.replace("\r" + "angle", "\\rangle")
+
+    s = s.replace("\t" + "heta", "\\theta")
+    s = s.replace("\t" + "au", "\\tau")
+    s = s.replace("\t" + "imes", "\\times")
+    s = s.replace("\t" + "ext", "\\text")
+    s = s.replace("\t" + "ilde", "\\tilde")
+
+    s = s.replace("\u000C" + "rac", "\\frac")
+    s = s.replace("\u000C" + "hi", "\\phi")
+
+    s = s.replace("\b" + "egin", "\\begin")
+    s = s.replace("\b" + "eta", "\\beta")
+    s = s.replace("\b" + "inom", "\\binom")
+    s = s.replace("\b" + "ar", "\\bar")
+
+    s = s.replace("\n", " ").replace("\r", "")
+
+    return s.trim()
+}
 
 private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownElement> {
+    val elements = mutableListOf<MarkdownElement>()
+    val mathRegex = Regex("""(?s)\$\$(.*?)\$\$|\\\[(.*?)\\\]|(\\begin\{[^}]+\}.*?\\end\{[^}]+\})""")
+
+    var lastIndex = 0
+    val matches = mathRegex.findAll(part)
+
+    for (match in matches) {
+        val textBefore = part.substring(lastIndex, match.range.first)
+        if (textBefore.isNotBlank()) elements.addAll(parseNormalMarkdown(textBefore, textColor))
+
+        val blockFormula = (match.groups[1]?.value ?: match.groups[2]?.value ?: match.groups[3]?.value ?: match.value).trim()
+        elements.add(MarkdownElement.MathBlock(blockFormula))
+
+        lastIndex = match.range.last + 1
+    }
+
+    val textAfter = part.substring(lastIndex)
+    if (textAfter.isNotBlank()) elements.addAll(parseNormalMarkdown(textAfter, textColor))
+
+    return elements
+}
+// Парсить звичайний текст, який не містить блоків формул. Виняток - inline-формули, які обробляються окремо в markdownInlineToAnnotated.
+private fun parseNormalMarkdown(part: String, textColor: Color): List<MarkdownElement> {
     val lines = part.lines()
     val elements = mutableListOf<MarkdownElement>()
     var currentTextBuffer = StringBuilder()
@@ -1910,13 +2172,26 @@ private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownE
     fun flush() {
         if (currentTextBuffer.isNotEmpty()) {
             val text = currentTextBuffer.toString().trimEnd('\n')
-            if (text.isNotEmpty()) elements.add(MarkdownElement.Text(markdownInlineToAnnotated(text, textColor)))
-            currentTextBuffer = StringBuilder()
+            if (text.isNotEmpty()) {
+                elements.add(MarkdownElement.Text(markdownInlineToAnnotated(text, textColor)))
+            }
+            currentTextBuffer.setLength(0)
         }
         if (currentQuoteBuffer.isNotEmpty()) {
             val quote = currentQuoteBuffer.toString().trimEnd('\n')
-            if (quote.isNotEmpty()) elements.add(MarkdownElement.Quote(markdownInlineToAnnotated(quote, textColor)))
-            currentQuoteBuffer = StringBuilder()
+            if (quote.isNotEmpty()) {
+                val firstLine = quote.substringBefore('\n').trim()
+                val match = """^\[!(.*?)\](.*)""".toRegex().matchEntire(firstLine)
+                if (match != null) {
+                    val type = match.groupValues[1].lowercase()
+                    val title = match.groupValues[2].trim().ifEmpty { type.replaceFirstChar { it.uppercase() } }
+                    val rest = if (quote.contains('\n')) quote.substringAfter('\n') else ""
+                    elements.add(MarkdownElement.Callout(type, title, markdownInlineToAnnotated(rest, textColor)))
+                } else {
+                    elements.add(MarkdownElement.Quote(markdownInlineToAnnotated(quote, textColor)))
+                }
+            }
+            currentQuoteBuffer.setLength(0)
         }
     }
 
@@ -1925,24 +2200,17 @@ private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownE
         val imgRegex = """^!\[(.*?)\]\((.*?)\)$""".toRegex()
         val imgMatch = imgRegex.find(trimmed)
 
-        if (line.startsWith(">")) {
-            if (!inQuote) {
-                flush()
-                inQuote = true
+        when {
+            trimmed == "---" -> { flush(); inQuote = false; elements.add(MarkdownElement.HorizontalRule) }
+            line.trimStart().startsWith(">") -> {
+                if (!inQuote) { flush(); inQuote = true }
+                currentQuoteBuffer.append(line.trimStart().drop(1).trim()).append('\n')
             }
-            currentQuoteBuffer.append(line.drop(1).trim()).append('\n')
-        } else if (imgMatch != null) {
-            flush()
-            inQuote = false
-            val alt = imgMatch.groupValues[1]
-            val url = imgMatch.groupValues[2]
-            elements.add(MarkdownElement.Image(alt, url))
-        } else {
-            if (inQuote) {
-                flush()
-                inQuote = false
+            imgMatch != null -> { flush(); inQuote = false; elements.add(MarkdownElement.Image(imgMatch.groupValues[1], imgMatch.groupValues[2])) }
+            else -> {
+                if (inQuote) { flush(); inQuote = false }
+                currentTextBuffer.append(line).append('\n')
             }
-            currentTextBuffer.append(line).append('\n')
         }
     }
     flush()
@@ -2113,3 +2381,4 @@ private fun unescapeMarkdown(text: String): String {
         .replace("\\>", ">")
         .replace("\\\\", "\\")
 }
+

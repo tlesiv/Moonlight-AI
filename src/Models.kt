@@ -12,11 +12,12 @@ data class ChatMessage(
 data class ChatSession(
     val id: String,
     var title: String,
-    val messages: SnapshotStateList<ChatMessage>,
-    var isPinned: Boolean = false
+    val messages: MutableList<ChatMessage>,
+    var isPinned: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
-fun newChatSession(title: String, messages: List<ChatMessage> = emptyList(), isPinned: Boolean = false): ChatSession {
+fun newChatSession(title: String, messages: List<ChatMessage> = emptyList(), isPinned: Boolean = false, updatedAt: Long = System.currentTimeMillis()): ChatSession {
     val list = mutableStateListOf<ChatMessage>().also { it.addAll(messages) }
     return ChatSession(id = UUID.randomUUID().toString(), title = title, messages = list, isPinned = isPinned)
 }
