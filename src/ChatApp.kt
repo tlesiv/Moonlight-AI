@@ -1674,6 +1674,44 @@ private fun MessageBubble(message: ChatMessage) {
                                                         modifier = Modifier.padding(bottom = 6.dp)
                                                     )
                                                 }
+                                                is MarkdownElement.Table -> {
+                                                    Surface(
+                                                        color = Color.Transparent, // Прозорий фон
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        border = BorderStroke(1.dp, borderColor),
+                                                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            element.rows.forEachIndexed { rowIndex, row ->
+                                                                val isHeader = rowIndex == 0
+                                                                val bg = if (isHeader) Color(0xFF2B2D31) else Color.Transparent
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth().background(bg)
+                                                                ) {
+                                                                    row.forEach { cell ->
+                                                                        Box(
+                                                                            modifier = Modifier
+                                                                                .weight(1f)
+                                                                                .border(0.5.dp, borderColor)
+                                                                                .padding(8.dp),
+                                                                            contentAlignment = Alignment.CenterStart
+                                                                        ) {
+                                                                            Text(
+                                                                                text = cell,
+                                                                                color = if (isHeader) Color.White else textColor,
+                                                                                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                                                                fontSize = 13.sp
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                }
                                                 is MarkdownElement.MathBlock -> {
                                                     MathBlockView(formula = element.formula)
                                                     Spacer(modifier = Modifier.height(6.dp))
@@ -1868,6 +1906,7 @@ sealed class MarkdownElement {
     data class Image(val alt: String, val url: String) : MarkdownElement()
     data class Callout(val type: String, val title: String, val annotatedString: AnnotatedString) : MarkdownElement()
     data class MathBlock(val formula: String) : MarkdownElement()
+    data class Table(val rows: List<List<AnnotatedString>>) : MarkdownElement()
     object HorizontalRule : MarkdownElement()
 }
 
@@ -2200,16 +2239,18 @@ private fun parseNormalMarkdown(part: String, textColor: Color): List<MarkdownEl
     val elements = mutableListOf<MarkdownElement>()
     var currentTextBuffer = StringBuilder()
     var currentQuoteBuffer = StringBuilder()
+    val currentTableBuffer = mutableListOf<String>()
     var inQuote = false
 
-    fun flush() {
+    fun flushText() {
         if (currentTextBuffer.isNotEmpty()) {
             val text = currentTextBuffer.toString().trimEnd('\n')
-            if (text.isNotEmpty()) {
-                elements.add(MarkdownElement.Text(markdownInlineToAnnotated(text, textColor)))
-            }
+            if (text.isNotEmpty()) elements.add(MarkdownElement.Text(markdownInlineToAnnotated(text, textColor)))
             currentTextBuffer.setLength(0)
         }
+    }
+
+    fun flushQuote() {
         if (currentQuoteBuffer.isNotEmpty()) {
             val quote = currentQuoteBuffer.toString().trimEnd('\n')
             if (quote.isNotEmpty()) {
@@ -2228,25 +2269,50 @@ private fun parseNormalMarkdown(part: String, textColor: Color): List<MarkdownEl
         }
     }
 
+    fun flushTable() {
+        if (currentTableBuffer.isNotEmpty()) {
+            val parsedRows = currentTableBuffer.map { line ->
+                line.trim().removePrefix("|").removeSuffix("|").split("|").map { cell ->
+                    markdownInlineToAnnotated(cell.trim(), textColor)
+                }
+            }
+            val filteredRows = parsedRows.filterIndexed { index, row ->
+                !(index == 1 && row.all { it.text.replace("-", "").replace(":", "").isBlank() })
+            }
+            if (filteredRows.isNotEmpty()) elements.add(MarkdownElement.Table(filteredRows))
+            currentTableBuffer.clear()
+        }
+    }
+
+    fun flushAll() { flushText(); flushQuote(); flushTable() }
+
     for (line in lines) {
         val trimmed = line.trim()
         val imgRegex = """^!\[(.*?)\]\((.*?)\)$""".toRegex()
         val imgMatch = imgRegex.find(trimmed)
 
+        val isTableLine = trimmed.startsWith("|") && trimmed.count { it == '|' } >= 2
+
         when {
-            trimmed == "---" -> { flush(); inQuote = false; elements.add(MarkdownElement.HorizontalRule) }
+            trimmed == "---" -> { flushAll(); inQuote = false; elements.add(MarkdownElement.HorizontalRule) }
+            isTableLine -> {
+                flushText(); flushQuote()
+                inQuote = false
+                currentTableBuffer.add(line)
+            }
             line.trimStart().startsWith(">") -> {
-                if (!inQuote) { flush(); inQuote = true }
+                if (!inQuote) { flushAll(); inQuote = true }
                 currentQuoteBuffer.append(line.trimStart().drop(1).trim()).append('\n')
             }
-            imgMatch != null -> { flush(); inQuote = false; elements.add(MarkdownElement.Image(imgMatch.groupValues[1], imgMatch.groupValues[2])) }
+            imgMatch != null -> { flushAll(); inQuote = false; elements.add(MarkdownElement.Image(imgMatch.groupValues[1], imgMatch.groupValues[2])) }
             else -> {
-                if (inQuote) { flush(); inQuote = false }
+                flushQuote(); flushTable()
+                inQuote = false
                 currentTextBuffer.append(line).append('\n')
             }
         }
     }
-    flush()
+    flushAll()
     return elements
 }
 val AttachmentIcon: ImageVector

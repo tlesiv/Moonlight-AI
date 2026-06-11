@@ -124,6 +124,8 @@ fun repairLatexEscapes(input: String): String {
     s = s.replace("\t" + "heta", "\\theta")
     s = s.replace("\t" + "au", "\\tau")
     s = s.replace("\t" + "ilde", "\\tilde")
+    s = s.replace("\t" + "o", "\\to")
+    s = s.replace("\t" + "an", "\\tan")
 
     s = s.replace("\n" + "abl", "\\nabla")
     s = s.replace("\n" + "eq", "\\neq")
@@ -141,11 +143,17 @@ fun repairLatexEscapes(input: String): String {
     s = s.replace("\b" + "inom", "\\binom")
     s = s.replace("\b" + "ar", "\\bar")
 
+    s = s.replace("\\to", "\\rightarrow")
+
     val commandsToFix = listOf(
         "nabla", "nu", "neq", "rho", "right", "rangle",
         "tau", "theta", "text", "times", "tilde",
         "frac", "phi", "begin", "beta", "binom", "bar",
-        "vec", "partial", "mu", "int", "sum", "infty", "left", "cdot", "cos", "sin", "tan", "log", "ln", "lim"
+        "vec", "partial", "mu", "int", "sum", "infty", "left",
+        "cdot", "cos", "sin", "tan", "log", "ln", "lim", "sqrt",
+        "alpha", "gamma", "delta", "epsilon", "zeta", "eta", "iota", "kappa", "lambda",
+        "xi", "omicron", "pi", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega",
+        "rightarrow"
     )
     commandsToFix.forEach { cmd ->
         s = s.replace("\\\\" + cmd, "\\" + cmd)
@@ -153,6 +161,23 @@ fun repairLatexEscapes(input: String): String {
 
     s = s.replace("\n", " ")
     s = s.replace("\r", "")
+
+    val cyrillicMap = mapOf(
+        'а' to "a", 'б' to "b", 'в' to "v", 'г' to "h", 'ґ' to "g", 'д' to "d", 'е' to "e", 'є' to "ye", 'ж' to "zh",
+        'з' to "z", 'и' to "y", 'і' to "i", 'ї' to "yi", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n",
+        'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts",
+        'ч' to "ch", 'ш' to "sh", 'щ' to "shch", 'ь' to "'", 'ю' to "yu", 'я' to "ya",
+        'А' to "A", 'Б' to "B", 'В' to "V", 'Г' to "H", 'Ґ' to "G", 'Д' to "D", 'Е' to "E", 'Є' to "Ye", 'Ж' to "Zh",
+        'З' to "Z", 'И' to "Y", 'І' to "I", 'Ї' to "Yi", 'Й' to "Y", 'К' to "K", 'Л' to "L", 'М' to "M", 'Н' to "N",
+        'О' to "O", 'П' to "P", 'Р' to "R", 'С' to "S", 'Т' to "T", 'У' to "U", 'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts",
+        'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Shch", 'Ь' to "'", 'Ю' to "Yu", 'Я' to "Ya"
+    )
+
+    s = s.replace(Regex("""([а-яА-ЯіІїЇєЄґҐ]+)""")) { match ->
+        val word = match.groupValues[1]
+        val latin = word.map { char -> cyrillicMap[char] ?: char }.joinToString("")
+        "\\text{$latin}"
+    }
 
     return s.trim()
 }
@@ -235,3 +260,4 @@ fun MathInlineView(formula: String, modifier: Modifier = Modifier) {
         }
     }
 }
+
