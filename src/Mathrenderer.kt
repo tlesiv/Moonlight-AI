@@ -114,6 +114,17 @@ private fun invertDarkPixels(src: BufferedImage): BufferedImage {
 fun repairLatexEscapes(input: String): String {
     var s = input
 
+    s = s.replace("\\ight", "\\right")
+    s = s.replace("\\ho", "\\rho")
+    s = s.replace("\\fac", "\\frac")
+    s = s.replace("\\partal", "\\partial")
+
+    s = s.replace("\t" + "ext", "\\text")
+    s = s.replace("\t" + "imes", "\\times")
+    s = s.replace("\t" + "heta", "\\theta")
+    s = s.replace("\t" + "au", "\\tau")
+    s = s.replace("\t" + "ilde", "\\tilde")
+
     s = s.replace("\n" + "abl", "\\nabla")
     s = s.replace("\n" + "eq", "\\neq")
     s = s.replace("\n" + "u", "\\nu")
@@ -121,12 +132,6 @@ fun repairLatexEscapes(input: String): String {
     s = s.replace("\r" + "ho", "\\rho")
     s = s.replace("\r" + "ight", "\\right")
     s = s.replace("\r" + "angle", "\\rangle")
-
-    s = s.replace("\t" + "ext", "\\text")
-    s = s.replace("\t" + "imes", "\\times")
-    s = s.replace("\t" + "heta", "\\theta")
-    s = s.replace("\t" + "au", "\\tau")
-    s = s.replace("\t" + "ilde", "\\tilde")
 
     s = s.replace("\u000C" + "rac", "\\frac")
     s = s.replace("\u000C" + "hi", "\\phi")
@@ -140,7 +145,7 @@ fun repairLatexEscapes(input: String): String {
         "nabla", "nu", "neq", "rho", "right", "rangle",
         "tau", "theta", "text", "times", "tilde",
         "frac", "phi", "begin", "beta", "binom", "bar",
-        "vec", "partial", "mu", "int", "sum", "infty", "left", "cdot"
+        "vec", "partial", "mu", "int", "sum", "infty", "left", "cdot", "cos", "sin", "tan", "log", "ln", "lim"
     )
     commandsToFix.forEach { cmd ->
         s = s.replace("\\\\" + cmd, "\\" + cmd)
@@ -202,7 +207,7 @@ fun MathInlineView(formula: String, modifier: Modifier = Modifier) {
         bitmap = null
         isError = false
         val result = withContext(Dispatchers.IO) {
-            runCatching { renderLatex(safeFormula, textSize = 22f) } // 🔥 Зробили 22f як у великих формул!
+            runCatching { renderLatex(safeFormula, textSize = 22f) }
         }
         result.fold(
             onSuccess = { if (it != null) bitmap = it else isError = true },

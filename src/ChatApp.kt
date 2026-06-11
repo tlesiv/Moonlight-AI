@@ -130,6 +130,8 @@ fun ChatApp() {
     var expandedMenuChatId by remember { mutableStateOf<String?>(null) }
     var editingChatId by remember { mutableStateOf<String?>(null) }
 
+    var selectedModel by remember { mutableStateOf("Gemini 3.1 Flash_Lite") }
+
 
     val activeChat = sessions.first { it.id == activeChatId }
     val messages = activeChat.messages
@@ -305,6 +307,8 @@ fun ChatApp() {
                     SingleColumnChat(
                         messages = chat.messages,
                         input = input,
+                        selectedModel = selectedModel,
+                        onModelChange = { selectedModel = it },
                         onInputChange = { input = it },
                         onSend = onSend,
                         isLoading = isLoading,
@@ -356,6 +360,8 @@ fun ChatApp() {
                             input = input,
                             onInputChange = { input = it },
                             onSend = onSend,
+                            selectedModel = selectedModel,
+                            onModelChange = { selectedModel = it },
                             modifier = Modifier.fillMaxSize(),
                             isLoading = isLoading,
                             errorText = errorText
@@ -438,6 +444,8 @@ private fun ChatInputRow(
     input: String,
     onInputChange: (String) -> Unit,
     onSend: (List<File>, String) -> Unit,
+    selectedModel: String,
+    onModelChange: (String) -> Unit,
     isLoading: Boolean,
     isNewChat: Boolean = false
 ) {
@@ -452,7 +460,6 @@ private fun ChatInputRow(
     var attachedFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue(input)) }
 
-    var selectedModel by remember { mutableStateOf("Gemini 3.1 Flash_Lite") }
     var menuExpanded by remember { mutableStateOf(false) }
 
     var displayFiles by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -855,7 +862,7 @@ private fun ChatInputRow(
                                                                         interactionSource = itemInteractionSource,
                                                                         indication = null
                                                                     ) {
-                                                                        selectedModel = model
+                                                                        onModelChange(model)
                                                                         scope.launch {
                                                                             kotlinx.coroutines.delay(150)
                                                                             menuExpanded = false
@@ -1343,6 +1350,8 @@ fun AnimatedChatMenu(
 private fun SingleColumnChat(
     messages: List<ChatMessage>,
     input: String,
+    selectedModel: String,
+    onModelChange: (String) -> Unit,
     onInputChange: (String) -> Unit,
     onSend: (List<File>, String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1401,7 +1410,7 @@ private fun SingleColumnChat(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    ChatInputRow(input, onInputChange, onSend, isLoading, isNewChat = true)
+                    ChatInputRow(input, onInputChange, onSend, selectedModel, onModelChange, isLoading, isNewChat = true)
                 }
             }
         } else {
@@ -1471,7 +1480,7 @@ private fun SingleColumnChat(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                ChatInputRow(input, onInputChange, onSend, isLoading, isNewChat = false)
+                ChatInputRow(input, onInputChange, onSend, selectedModel, onModelChange, isLoading, isNewChat = false)
             }
         }
     }
@@ -2019,9 +2028,9 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
                                 val rawMath = unescapeMarkdown(inlineMathMatch.groupValues[2])
                                 val prettyMath = prettifyInlineMath(rawMath)
 
-                                append(" ")
+//                                append(" ")
                                 appendMathWithScripts(prettyMath.trim())
-                                append(" ")
+//                                append(" ")
                             }
                         }
 
@@ -2053,15 +2062,30 @@ private fun markdownInlineToAnnotated(part: String, textColor: Color): Annotated
 }
 private fun prettifyInlineMath(formula: String): String {
     var s = formula
+
     s = s.replace("\t" + "imes", "\\times")
     s = s.replace("\t" + "ext", "\\text")
     s = s.replace("\n" + "abl", "\\nabla")
     s = s.replace("\r" + "ho", "\\rho")
     s = s.replace("\u000C" + "rac", "\\frac")
 
+    var oldS = ""
+    while (s != oldS) {
+        oldS = s
+        s = s.replace(Regex("""\\frac\{([^{}]+)\}\{([^{}]+)\}"""), "$1/$2")
+    }
+
+    val funcs = listOf("cos", "sin", "tan", "cot", "ln", "log", "det", "arcsin", "arccos", "arctan")
+    funcs.forEach { f ->
+        s = s.replace("\\$f", f)
+    }
+
+    s = s.replace("\\int", "∫")
+    s = s.replace("\\sum", "∑")
+    s = s.replace("\\prod", "∏")
+    s = s.replace("\\lim", "lim")
     s = s.replace("\\times", "×")
     s = s.replace("\\cdot", "·")
-    s = s.replace("\\det", "det")
     s = s.replace("\\leq", "≤")
     s = s.replace("\\geq", "≥")
     s = s.replace("\\neq", "≠")
@@ -2069,6 +2093,7 @@ private fun prettifyInlineMath(formula: String): String {
     s = s.replace("\\pm", "±")
     s = s.replace("\\infty", "∞")
     s = s.replace("\\nabla", "∇")
+    s = s.replace("\\partial", "∂")
     s = s.replace("\\rho", "ρ")
     s = s.replace("\\alpha", "α")
     s = s.replace("\\beta", "β")
@@ -2076,12 +2101,21 @@ private fun prettifyInlineMath(formula: String): String {
     s = s.replace("\\mu", "μ")
     s = s.replace("\\sigma", "σ")
     s = s.replace("\\Delta", "Δ")
+    s = s.replace("\\theta", "θ")
 
     s = s.replace("\\left(", "(").replace("\\right)", ")")
     s = s.replace("\\left[", "[").replace("\\right]", "]")
+    s = s.replace("\\left|", "|").replace("\\right|", "|")
+    s = s.replace("\\,", " ") // малий пробіл у LaTeX
+    s = s.replace("\\;", " ")
+    s = s.replace("\\quad", "  ")
+    s = s.replace("\\ ", " ")
+
     s = s.replace(Regex("""\\text\{([^}]*)\}"""), "$1")
 
-    return s
+    s = s.replace(Regex("""\s+"""), " ")
+
+    return s.trim()
 }
 //Робить степінь
 private fun AnnotatedString.Builder.appendMathWithScripts(text: String) {
@@ -2161,7 +2195,6 @@ private fun parseMessageMarkdown(part: String, textColor: Color): List<MarkdownE
 
     return elements
 }
-// Парсить звичайний текст, який не містить блоків формул. Виняток - inline-формули, які обробляються окремо в markdownInlineToAnnotated.
 private fun parseNormalMarkdown(part: String, textColor: Color): List<MarkdownElement> {
     val lines = part.lines()
     val elements = mutableListOf<MarkdownElement>()
