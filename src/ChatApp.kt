@@ -51,6 +51,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.animation.*
+import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -73,11 +75,14 @@ import java.io.File
 import io.github.vinceglb.filekit.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.core.PickerType
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
@@ -1119,10 +1124,13 @@ private fun Sidebar(
                     Row(
                         modifier = Modifier
                             .animateItem(
-                                fadeInSpec = tween(400),
-                                fadeOutSpec = tween(500),
-                                placementSpec = tween(400)
+                            fadeInSpec = tween(300),
+                            fadeOutSpec = tween(300),
+                            placementSpec = tween(
+                                durationMillis = 400,
+                                easing = EaseInOut
                             )
+                        )
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
                             .background(bg, RoundedCornerShape(16.dp))
@@ -1269,9 +1277,11 @@ private fun Sidebar(
                                         },
                                         onTogglePin = {
                                             onSetExpandedMenuChatId(null)
+                                            onTogglePin(session)
+
                                             scope.launch {
-                                                kotlinx.coroutines.delay(300)
-                                                onTogglePin(session)
+                                                kotlinx.coroutines.delay(450)
+                                                listState.animateScrollToItem(0)
                                             }
                                         },
                                         onDelete = {
