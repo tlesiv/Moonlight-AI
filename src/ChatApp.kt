@@ -81,6 +81,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -404,27 +405,20 @@ fun ChatApp() {
 fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "typing_indicator")
 
-    val dot1 by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "dot1"
+    fun dotSpec(delayMs: Int) = infiniteRepeatable(
+        animation = keyframes {
+            durationMillis = 900
+            0f at delayMs
+            1f at (delayMs + 180) using FastOutSlowInEasing  // швидкий стрибок вгору
+            0f at (delayMs + 380) using FastOutSlowInEasing  // м'яке приземлення
+            0f at 900                                        // пауза до наступного циклу
+        },
+        repeatMode = RepeatMode.Restart
     )
-    val dot2 by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(400, delayMillis = 150, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "dot2"
-    )
-    val dot3 by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(400, delayMillis = 300, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "dot3"
-    )
+
+    val dot1 by infiniteTransition.animateFloat(0f, 1f, dotSpec(0),   label = "dot1")
+    val dot2 by infiniteTransition.animateFloat(0f, 1f, dotSpec(150), label = "dot2")
+    val dot3 by infiniteTransition.animateFloat(0f, 1f, dotSpec(300), label = "dot3")
 
     Row(
         modifier = modifier
@@ -433,15 +427,14 @@ fun MoonlightTypingIndicator(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val dots = listOf(dot1, dot2, dot3)
-        dots.forEach { value ->
+        listOf(dot1, dot2, dot3).forEach { value ->
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 1.5.dp)//Відступ між крапками
-                    .size(5.3.dp)
-                    .offset(y = (-6).dp * value)// Підстрибування вгору
+                    .padding(horizontal = 1.5.dp)
+                    .size(6.dp)
+                    .offset(y = (-8).dp * value)
                     .clip(CircleShape)
-                    .background(Color(0xFF949BA4).copy(alpha = 0.3f + (0.7f * value)))
+                    .background(Color(0xFF949BA4).copy(alpha = 0.4f + 0.6f * value))
             )
         }
     }

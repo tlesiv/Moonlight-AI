@@ -153,7 +153,7 @@ fun repairLatexEscapes(input: String): String {
         "cdot", "cos", "sin", "tan", "log", "ln", "lim", "sqrt",
         "alpha", "gamma", "delta", "epsilon", "zeta", "eta", "iota", "kappa", "lambda",
         "xi", "omicron", "pi", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega",
-        "rightarrow"
+        "rightarrow", "hbar"
     )
     commandsToFix.forEach { cmd ->
         s = s.replace("\\\\" + cmd, "\\" + cmd)
