@@ -24,17 +24,6 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 
-/**
- * Конвертує LaTeX-рядок у [ImageBitmap] для Compose.
- *
- * @param formula  Чиста LaTeX-формула (без оточуючих $ або $$).
- * @param textSize Розмір тексту в пунктах (за замовчуванням 22f для блокових,
- *                 18f рекомендується для інлайн).
- * @param fgColor  Колір тексту формули (за замовчуванням білий).
- * @param bgColor  Колір фону (за замовчуванням прозорий).
- */
-
-
 
 fun renderLatex(
     formula: String,
