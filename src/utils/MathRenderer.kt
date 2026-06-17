@@ -1,8 +1,7 @@
+package utils
+
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
@@ -19,10 +18,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.scilab.forge.jlatexmath.TeXConstants
 import org.scilab.forge.jlatexmath.TeXFormula
-import java.awt.Color as AwtColor
 import java.awt.Graphics2D
+import java.awt.Insets
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
+import java.awt.Color as AwtColor
 
 
 fun renderLatex(
@@ -36,7 +36,7 @@ fun renderLatex(
     return try {
         val tex = TeXFormula(formula.trim())
         val icon = tex.createTeXIcon(style, textSize).apply {
-            insets = java.awt.Insets(6, 8, 6, 8)
+            insets = Insets(6, 8, 6, 8)
         }
 
         val width = icon.iconWidth.coerceAtLeast(1)
@@ -200,53 +200,15 @@ fun MathBlockView(formula: String, modifier: Modifier = Modifier) {
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.widthIn(max = 700.dp)
             )
+
             isError -> Text(
                 text = safeFormula,
                 color = Color.White,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 14.sp
             )
+
             else -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
         }
     }
 }
-
-@Composable
-fun MathInlineView(formula: String, modifier: Modifier = Modifier) {
-    val safeFormula = remember(formula) { repairLatexEscapes(formula) }
-    var bitmap by remember(safeFormula) { mutableStateOf<ImageBitmap?>(null) }
-    var isError by remember(safeFormula) { mutableStateOf(false) }
-
-    LaunchedEffect(safeFormula) {
-        bitmap = null
-        isError = false
-        val result = withContext(Dispatchers.IO) {
-            runCatching { renderLatex(safeFormula, textSize = 22f) }
-        }
-        result.fold(
-            onSuccess = { if (it != null) bitmap = it else isError = true },
-            onFailure = { isError = true }
-        )
-    }
-
-    Box(
-        modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        when {
-            bitmap != null -> Image(
-                bitmap = bitmap!!,
-                contentDescription = formula,
-                contentScale = ContentScale.Fit
-            )
-            isError -> Text(
-                text = "\$$safeFormula\$",
-                color = Color(0xFFE3E5E8),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp
-            )
-            else -> CircularProgressIndicator(color = Color.White, strokeWidth = 1.5.dp, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-

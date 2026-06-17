@@ -1,17 +1,22 @@
+package api
+
+import data.ChatMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.File
+import java.io.InputStreamReader
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
-import java.util.Base64
 import java.nio.file.Files
-import java.io.File
+import java.util.*
 import java.util.zip.ZipFile
+
 
 fun callGemini(apiKey: String, model: String, history: List<ChatMessage>): Result<String> {
     val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
@@ -98,9 +103,10 @@ private fun buildHistoryJson(history: List<ChatMessage>): String {
                     val ext = file.extension.lowercase()
 
                     if (file.length() > 20 * 1024 * 1024) {
-                        combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач щойно намагався прикріпити файл ${file.name}, але його розмір перевищує ліміт у 20 МБ, тому ти його не отримав. Твоє завдання: ввічливо повідом користувачу про це обмеження.]"                    } else if (ext == "docx") {
+                        combinedText += "\n\n[SYSTEM INSTRUCTION FOR YOU (AI): The user just tried to attach the file ${file.name}, but its size exceeds the 20 MB limit, so you did not receive it. Your task: politely inform the user about this limitation.]"
+                    } else if (ext == "docx") {
                         try {
-                            java.util.zip.ZipFile(file).use { zip ->
+                            ZipFile(file).use { zip ->
                                 val entry = zip.getEntry("word/document.xml")
                                 if (entry != null) {
                                     val xml = zip.getInputStream(entry).bufferedReader().readText()
@@ -111,15 +117,14 @@ private fun buildHistoryJson(history: List<ChatMessage>): String {
                                         tRegex.findAll(pMatch.groupValues[1]).joinToString("") { it.groupValues[1] }
                                     }.trim()
 
-                                    combinedText += "\n\n[Вміст файлу ${file.name}]:\n$docText"
+                                    combinedText += "\n\n[Content of the file ${file.name}]:\n$docText"
                                 }
                             }
                         } catch (e: Exception) {
-                            combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Під час спроби прочитати файл ${file.name} виникла системна помилка (файл пошкоджено або заблоковано). Повідом користувача, що файл не вдалося відкрити.]"
+                            combinedText += "\n\n[SYSTEM INSTRUCTION FOR YOU (AI): A system error occurred while trying to read the file ${file.name} (the file is corrupted or locked). Inform the user that the file could not be opened.]"
                             e.printStackTrace()
                         }
-                    }
-                    else if (ext in listOf(
+                    } else if (ext in listOf(
                             "txt",
                             "md",
                             "csv",
@@ -150,17 +155,17 @@ private fun buildHistoryJson(history: List<ChatMessage>): String {
                     ) {
                         try {
                             val fileText = file.readText()
-                            combinedText += "\n\n[Вміст файлу ${file.name}]:\n$fileText"
+                            combinedText += "\n\n[Content of the file ${file.name}]:\n$fileText"
                         } catch (e: Exception) {
-                            combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Під час спроби прочитати текстовий файл ${file.name} виникла системна помилка. Повідом користувача, що файл не вдалося прочитати, і запропонуй йому перевірити файл або скопіювати текст вручну в чат.]"
+                            combinedText += "\n\n[SYSTEM INSTRUCTION FOR YOU (AI): A system error occurred while trying to read the text file ${file.name}. Inform the user that the file could not be read, and suggest checking the file or manually copying the text into the chat.]"
                             e.printStackTrace()
                         }
                     }
                     // Всі інші (картинки, pdf, аудіо, відео) йдуть у Base64
                     else {
                         try {
-                            val bytes = java.nio.file.Files.readAllBytes(file.toPath())
-                            val base64 = java.util.Base64.getEncoder().encodeToString(bytes)
+                            val bytes = Files.readAllBytes(file.toPath())
+                            val base64 = Base64.getEncoder().encodeToString(bytes)
 
                             val mimeType = when (ext) {
                                 "png" -> "image/png"
@@ -190,13 +195,14 @@ private fun buildHistoryJson(history: List<ChatMessage>): String {
                             if (mimeType != null) {
                                 inlineDataParts.add("""{"inlineData": {"mimeType": "$mimeType", "data": "$base64"}}""")
                             } else {
-                                combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач прикріпив файл ${file.name}, але цей формат (${ext}) тобою не підтримується. Твоє завдання: скажи користувачу, що ти не можеш прочитати цей тип файлу, і запропонуй надіслати інформацію інакше (наприклад, скопіювати текст в чат або зробити скріншот).]"                            }
+                                combinedText += "\n\n[SYSTEM INSTRUCTION FOR YOU (AI): The user attached the file ${file.name}, but this format (${ext}) is not supported by you. Your task: tell the user that you cannot read this file type, and suggest sending the information differently (for example, copying the text into the chat or taking a screenshot).]"
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
                 } else {
-                    combinedText += "\n\n[СИСТЕМНА ІНСТРУКЦІЯ ДЛЯ ТЕБЕ (ШІ): Користувач намагався відправити файл ${file.name}, але система не змогла знайти його на диску (можливо, він був видалений або переміщений під час відправки). Твоє завдання: ввічливо повідом про це користувача і попроси прикріпити файл ще раз.]"
+                    combinedText += "\n\n[SYSTEM INSTRUCTION FOR YOU (AI): The user tried to send the file ${file.name}, but the system could not find it on the disk (it might have been deleted or moved during sending). Your task: politely inform the user about this and ask them to attach the file again.]"
                 }
             }
         }
@@ -270,7 +276,7 @@ When writing mathematical formulas, you MUST strictly follow these formatting ru
             val match = regex.find(line)
             if (match != null) {
                 val textChunk = unescapeJson(match.groupValues[1])
-                kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
+                GlobalScope.launch(Dispatchers.Main) {
                     onChunk(textChunk)
                 }
             }

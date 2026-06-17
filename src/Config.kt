@@ -11,26 +11,26 @@ private fun fetchApiKey(): String {
         envFile.readLines().forEach { line ->
             if (line.startsWith("API_KEY=")) {
                 val keyFromFile = line.substringAfter("API_KEY=").trim()
-                if (keyFromFile.isNotEmpty() && keyFromFile != "ваш_ключ_тут") {
+                if (keyFromFile.isNotEmpty() && keyFromFile != "your_key_here") {
                     return keyFromFile
                 }
             }
         }
     }
 
-    println("⚠️ [Moonlight] API_KEY не знайдено у системі або файлі .env!")
-    println("Будь ласка, вставте свій Gemini API ключ і натисніть Enter:")
+    println("⚠️ [Moonlight] API_KEY not found in the system or .env file!")
+    println("Please paste your Gemini API key and press Enter:")
 
     val inputKey = readln().trim()
     if (inputKey.isEmpty()) {
-        error("Ключ не може бути порожнім. Програма завершує роботу.")
+        error("The key cannot be empty. The program is terminating.")
     }
 
     try {
         envFile.writeText("API_KEY=$inputKey\n")
-        println("Ключ успішно збережено у локальний файл .env. Наступного разу введення не знадобиться!")
+        println("The key was successfully saved to the local .env file. You won't need to enter it next time!")
     } catch (e: Exception) {
-        println("!!! Не вдалося автоматично створити файл .env: ${e.message}")
+        println("!!! Failed to automatically create the .env file: ${e.message}")
     }
 
     return inputKey

@@ -1,6 +1,7 @@
+package data
+
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import java.util.UUID
+import java.util.*
 
 data class ChatMessage(
     val id: String,
@@ -17,12 +18,22 @@ data class ChatSession(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-fun newChatSession(title: String, messages: List<ChatMessage> = emptyList(), isPinned: Boolean = false, updatedAt: Long = System.currentTimeMillis()): ChatSession {
+fun newChatSession(
+    title: String,
+    messages: List<ChatMessage> = emptyList(),
+    isPinned: Boolean = false,
+    updatedAt: Long = System.currentTimeMillis()
+): ChatSession {
     val list = mutableStateListOf<ChatMessage>().also { it.addAll(messages) }
     return ChatSession(id = UUID.randomUUID().toString(), title = title, messages = list, isPinned = isPinned)
 }
 
-fun newChatSessionWithId(id: String, title: String, messages: List<ChatMessage> = emptyList(), isPinned: Boolean = false): ChatSession {
+fun newChatSessionWithId(
+    id: String,
+    title: String,
+    messages: List<ChatMessage> = emptyList(),
+    isPinned: Boolean = false
+): ChatSession {
     val list = mutableStateListOf<ChatMessage>().also { it.addAll(messages) }
     return ChatSession(id = id, title = title, messages = list, isPinned = isPinned)
 }
