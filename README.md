@@ -9,7 +9,6 @@ A modern, lightning-fast, and highly customizable desktop application for intera
 - **📝 Rich Markdown:** Renders code blocks (with copy buttons), tables, clickable links, and custom callouts (info, warning, success).
 - **📎 Smart Attachments:** Supports `Ctrl+V` clipboard paste, reading text/`.docx` files, and Base64 image encoding for vision models.
 - **💬 Chat Management:** AI-generated titles, pinning with physics-based scrolling (Spring/Tween), renaming, and session storage.
-- **📋 Seamless Clipboard:** 1-click code copying or smart `Ctrl+A` selection on any message with a visual blink effect.
 - **🎨 Premium UI/UX:** Built with smooth `Crossfade` transitions, hover effects, and a responsive collapsible sidebar.
 
 ## 🛠 Tech Stack
