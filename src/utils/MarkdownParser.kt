@@ -25,6 +25,21 @@ fun wikiToWebUrl(target: String): String {
     return "https://www.google.com/search?q=" + java.net.URLEncoder.encode(target, "UTF-8")
 }
 
+private val boldItalicRegex = "(^|[^\\\\])\\*\\*\\*(.*?)\\*\\*\\*".toRegex()
+private val boldRegex = "(^|[^\\\\])\\*\\*(.*?)\\*\\*".toRegex()
+private val italicRegex = "(^|[^\\\\])\\*(.*?)\\*".toRegex()
+private val strikeRegex = "(^|[^\\\\])~~(.*?)~~".toRegex()
+private val codeRegex = "(^|[^\\\\])`(.*?)`".toRegex()
+private val imageRegex = "(^|[^\\\\])!\\[(.*?)\\]\\((.*?)\\)".toRegex()
+private val linkRegex = "(^|[^\\\\])\\[(.*?)\\]\\((.*?)\\)".toRegex()
+private val urlRegex = "(https?://[\\w/\\-?.%=&]+)".toRegex()
+private val highlightRegex = "(^|[^\\\\])==(.*?)==".toRegex()
+private val tagRegex = "(^|\\s)#([\\p{L}\\d_]+)".toRegex()
+private val footnoteRefRegex = "(^|[^\\\\])\\[\\^([^\\)]+)\\]".toRegex()
+private val wikiLinkRegex = "(^|[^\\\\])\\[\\[(.*?)\\]\\]".toRegex()
+private val blockIdRegex = "(^|\\s)\\^([a-zA-Z0-9_\\-]+)".toRegex()
+private val inlineMathRegex = "(^|[^\\\\])\\$([^\\$]+)\\$".toRegex()
+
 fun markdownInlineToAnnotated(part: String, textColor: Color): AnnotatedString {
     return buildAnnotatedString {
         val lines = part.lines()
@@ -32,7 +47,6 @@ fun markdownInlineToAnnotated(part: String, textColor: Color): AnnotatedString {
         lines.forEachIndexed { lineIndex, rawLine ->
             val currentLine = rawLine.trimStart()
 
-            // Заголовки
             var headingStyle = SpanStyle(color = textColor)
             var processedLine = currentLine
             if (currentLine.startsWith("###### ")) {
@@ -55,234 +69,154 @@ fun markdownInlineToAnnotated(part: String, textColor: Color): AnnotatedString {
                 processedLine = currentLine.removePrefix("# ")
             }
 
-            // Списки
             if (processedLine.startsWith("* ")) {
                 processedLine = "• " + processedLine.removePrefix("* ")
             } else if (processedLine.startsWith("- ")) {
                 processedLine = "• " + processedLine.removePrefix("- ")
-            } else if (processedLine.startsWith("*") && !processedLine.startsWith("**") && !processedLine.drop(1)
-                    .contains("*")
-            ) {
+            } else if (processedLine.startsWith("*") && !processedLine.startsWith("**") && !processedLine.drop(1).contains("*")) {
                 processedLine = "• " + processedLine.drop(1).trimStart()
             }
 
             withStyle(headingStyle) {
-                var remaining = processedLine
-                while (remaining.isNotEmpty()) {
-                    val boldItalicMatch = "(^|[^\\\\])\\*\\*\\*(.*?)\\*\\*\\*".toRegex().find(remaining)
-                    val boldMatch = "(^|[^\\\\])\\*\\*(.*?)\\*\\*".toRegex().find(remaining)
-                    val italicMatch = "(^|[^\\\\])\\*(.*?)\\*".toRegex().find(remaining)
-                    val strikeMatch = "(^|[^\\\\])~~(.*?)~~".toRegex().find(remaining)
-                    val codeMatch = "(^|[^\\\\])`(.*?)`".toRegex().find(remaining)
-                    val imageMatch = "(^|[^\\\\])!\\[(.*?)\\]\\((.*?)\\)".toRegex().find(remaining)
-                    val linkMatch = "(^|[^\\\\])\\[(.*?)\\]\\((.*?)\\)".toRegex().find(remaining)
-                    val urlMatch = "(https?://[\\w/\\-?.%=&]+)".toRegex().find(remaining)
-
-                    val highlightMatch = "(^|[^\\\\])==(.*?)==".toRegex().find(remaining)
-                    val tagMatch = "(^|\\s)#([\\p{L}\\d_]+)".toRegex().find(remaining)
-                    val footnoteRefMatch = "(^|[^\\\\])\\[\\^([^\\)]+)\\]".toRegex().find(remaining)
-                    val wikiLinkMatch = "(^|[^\\\\])\\[\\[(.*?)\\]\\]".toRegex().find(remaining)
-                    val blockIdMatch = "(^|\\s)\\^([a-zA-Z0-9_\\-]+)".toRegex().find(remaining)
-
-                    val inlineMathMatch = "(^|[^\\\\])\\$([^\\$]+)\\$".toRegex().find(remaining)
-
-                    val matches = listOfNotNull(
-                        boldItalicMatch, boldMatch, italicMatch, strikeMatch,
-                        codeMatch, imageMatch, linkMatch, urlMatch,
-                        highlightMatch, tagMatch, footnoteRefMatch, wikiLinkMatch, blockIdMatch, inlineMathMatch
-                    )
-
-                    val firstMatch = matches.minByOrNull { it.range.first }
-
-                    if (firstMatch == null) {
-                        append(unescapeMarkdown(remaining))
-                        break
-                    }
-
-                    val beforeMatch = remaining.substring(0, firstMatch.range.first)
-                    append(unescapeMarkdown(beforeMatch))
-
-                    when (firstMatch) {
-                        boldItalicMatch -> {
-                            append(unescapeMarkdown(boldItalicMatch.groupValues[1]))
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) {
-                                append(
-                                    unescapeMarkdown(boldItalicMatch.groupValues[2])
-                                )
-                            }
-                        }
-
-                        boldMatch -> {
-                            append(unescapeMarkdown(boldMatch.groupValues[1]))
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(unescapeMarkdown(boldMatch.groupValues[2])) }
-                        }
-
-                        italicMatch -> {
-                            append(unescapeMarkdown(italicMatch.groupValues[1]))
-                            withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(unescapeMarkdown(italicMatch.groupValues[2])) }
-                        }
-
-                        strikeMatch -> {
-                            append(unescapeMarkdown(strikeMatch.groupValues[1]))
-                            withStyle(
-                                SpanStyle(
-                                    textDecoration = TextDecoration.LineThrough,
-                                    color = textColor.copy(alpha = 0.7f)
-                                )
-                            ) { append(unescapeMarkdown(strikeMatch.groupValues[2])) }
-                        }
-
-                        codeMatch -> {
-                            append(unescapeMarkdown(codeMatch.groupValues[1]))
-                            withStyle(
-                                SpanStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    background = Color(0xFF2B2D31),
-                                    color = Color(0xFFE3E5E8),
-                                    fontSize = 14.sp
-                                )
-                            ) { append(" " + unescapeMarkdown(codeMatch.groupValues[2]) + " ") }
-                        }
-
-                        imageMatch -> {
-                            append(unescapeMarkdown(imageMatch.groupValues[1]))
-                            withStyle(SpanStyle(color = Color(0xFF949BA4), fontStyle = FontStyle.Italic)) {
-                                append("[Зображення: ${unescapeMarkdown(imageMatch.groupValues[2])}]")
-                            }
-                        }
-
-                        linkMatch -> {
-                            append(unescapeMarkdown(linkMatch.groupValues[1]))
-                            val linkText = unescapeMarkdown(linkMatch.groupValues[2])
-                            val url = linkMatch.groupValues[3].trim()
-                            val start = this.length
-                            append(linkText)
-                            val end = this.length
-                            if (isWebUrl(url)) {
-                                addLink(
-                                    LinkAnnotation.Url(
-                                        url,
-                                        TextLinkStyles(
-                                            SpanStyle(
-                                                color = Color.White,
-                                                textDecoration = TextDecoration.Underline,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        )
-                                    ), start, end
-                                )
-                            }
-                        }
-
-                        urlMatch -> {
-                            val url = urlMatch.value.trim()
-                            val start = this.length
-                            append(url)
-                            val end = this.length
-                            if (isWebUrl(url)) {
-                                addLink(
-                                    LinkAnnotation.Url(
-                                        url,
-                                        TextLinkStyles(
-                                            SpanStyle(
-                                                color = Color(0xFF38BDF8),
-                                                textDecoration = TextDecoration.Underline,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        )
-                                    ), start, end
-                                )
-                            }
-                        }
-
-                        wikiLinkMatch -> {
-                            append(unescapeMarkdown(wikiLinkMatch.groupValues[1]))
-                            val raw = unescapeMarkdown(wikiLinkMatch.groupValues[2]).trim()
-                            val (target, alias) = raw.split("|", limit = 2)
-                                .let { parts -> parts[0].trim() to parts.getOrNull(1)?.trim() }
-                            val display = alias?.takeIf { it.isNotBlank() } ?: target
-                            val url = wikiToWebUrl(target)
-                            val start = this.length
-                            append(display)
-                            val end = this.length
-                            addLink(
-                                LinkAnnotation.Url(
-                                    url,
-                                    TextLinkStyles(
-                                        SpanStyle(
-                                            color = Color.White,
-                                            textDecoration = TextDecoration.Underline,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    )
-                                ), start, end
-                            )
-                        }
-
-                        blockIdMatch -> {
-                            append(blockIdMatch.groupValues[1])
-                            withStyle(
-                                SpanStyle(
-                                    color = Color(0xFFF59E0B),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            ) {
-                                append("^" + blockIdMatch.groupValues[2])
-                            }
-                        }
-
-                        inlineMathMatch -> {
-                            append(unescapeMarkdown(inlineMathMatch.groupValues[1]))
-                            withStyle(
-                                SpanStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontStyle = FontStyle.Italic,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE3E5E8),
-                                )
-                            ) {
-                                val rawMath = unescapeMarkdown(inlineMathMatch.groupValues[2])
-                                val prettyMath = prettifyInlineMath(rawMath)
-
-//                                append(" ")
-                                appendMathWithScripts(prettyMath.trim())
-//                                append(" ")
-                            }
-                        }
-
-                        highlightMatch -> {
-                            append(unescapeMarkdown(highlightMatch.groupValues[1]))
-                            withStyle(SpanStyle(background = Color(0xFF2F3336), color = Color.White)) {
-                                append(unescapeMarkdown(highlightMatch.groupValues[2]))
-                            }
-                        }
-
-                        tagMatch -> {
-                            append(tagMatch.groupValues[1])
-                            withStyle(SpanStyle(color = Color(0xFF949BA4))) {
-                                append("#" + tagMatch.groupValues[2])
-                            }
-                        }
-
-                        footnoteRefMatch -> {
-                            append(unescapeMarkdown(footnoteRefMatch.groupValues[1]))
-                            withStyle(
-                                SpanStyle(
-                                    color = Color(0xFF71767B),
-                                    fontSize = 11.sp,
-                                    baselineShift = BaselineShift.Superscript
-                                )
-                            ) {
-                                append("[^" + unescapeMarkdown(footnoteRefMatch.groupValues[2]) + "]")
-                            }
-                        }
-                    }
-                    remaining = remaining.substring(firstMatch.range.last + 1)
-                }
+                processLineFormatting(processedLine, textColor)
             }
             if (lineIndex < lines.lastIndex) append('\n')
         }
+    }
+}
+
+private fun AnnotatedString.Builder.processLineFormatting(line: String, textColor: Color) {
+    var remaining = line
+    while (remaining.isNotEmpty()) {
+        val boldItalicMatch = boldItalicRegex.find(remaining)
+        val boldMatch = boldRegex.find(remaining)
+        val italicMatch = italicRegex.find(remaining)
+        val strikeMatch = strikeRegex.find(remaining)
+        val codeMatch = codeRegex.find(remaining)
+        val imageMatch = imageRegex.find(remaining)
+        val linkMatch = linkRegex.find(remaining)
+        val urlMatch = urlRegex.find(remaining)
+        val highlightMatch = highlightRegex.find(remaining)
+        val tagMatch = tagRegex.find(remaining)
+        val footnoteRefMatch = footnoteRefRegex.find(remaining)
+        val wikiLinkMatch = wikiLinkRegex.find(remaining)
+        val blockIdMatch = blockIdRegex.find(remaining)
+        val inlineMathMatch = inlineMathRegex.find(remaining)
+
+        val matches = listOfNotNull(
+            boldItalicMatch, boldMatch, italicMatch, strikeMatch,
+            codeMatch, imageMatch, linkMatch, urlMatch,
+            highlightMatch, tagMatch, footnoteRefMatch, wikiLinkMatch, blockIdMatch, inlineMathMatch
+        )
+
+        val firstMatch = matches.minByOrNull { it.range.first }
+
+        if (firstMatch == null) {
+            append(unescapeMarkdown(remaining))
+            break
+        }
+
+        val beforeMatch = remaining.substring(0, firstMatch.range.first)
+        append(unescapeMarkdown(beforeMatch))
+
+        when (firstMatch) {
+            boldItalicMatch -> {
+                append(unescapeMarkdown(boldItalicMatch.groupValues[1]))
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)) {
+                    append(unescapeMarkdown(boldItalicMatch.groupValues[2]))
+                }
+            }
+            boldMatch -> {
+                append(unescapeMarkdown(boldMatch.groupValues[1]))
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(unescapeMarkdown(boldMatch.groupValues[2])) }
+            }
+            italicMatch -> {
+                append(unescapeMarkdown(italicMatch.groupValues[1]))
+                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(unescapeMarkdown(italicMatch.groupValues[2])) }
+            }
+            strikeMatch -> {
+                append(unescapeMarkdown(strikeMatch.groupValues[1]))
+                withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough, color = textColor.copy(alpha = 0.7f))) {
+                    append(unescapeMarkdown(strikeMatch.groupValues[2]))
+                }
+            }
+            codeMatch -> {
+                append(unescapeMarkdown(codeMatch.groupValues[1]))
+                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0xFF2B2D31), color = Color(0xFFE3E5E8), fontSize = 14.sp)) {
+                    append(" " + unescapeMarkdown(codeMatch.groupValues[2]) + " ")
+                }
+            }
+            imageMatch -> {
+                append(unescapeMarkdown(imageMatch.groupValues[1]))
+                withStyle(SpanStyle(color = Color(0xFF949BA4), fontStyle = FontStyle.Italic)) {
+                    append("[Зображення: ${unescapeMarkdown(imageMatch.groupValues[2])}]")
+                }
+            }
+            linkMatch -> {
+                append(unescapeMarkdown(linkMatch.groupValues[1]))
+                val linkText = unescapeMarkdown(linkMatch.groupValues[2])
+                val url = linkMatch.groupValues[3].trim()
+                val start = this.length
+                append(linkText)
+                val end = this.length
+                if (isWebUrl(url)) {
+                    addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                }
+            }
+            urlMatch -> {
+                val url = urlMatch.value.trim()
+                val start = this.length
+                append(url)
+                val end = this.length
+                if (isWebUrl(url)) {
+                    addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color(0xFF38BDF8), textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+                }
+            }
+            wikiLinkMatch -> {
+                append(unescapeMarkdown(wikiLinkMatch.groupValues[1]))
+                val raw = unescapeMarkdown(wikiLinkMatch.groupValues[2]).trim()
+                val (target, alias) = raw.split("|", limit = 2).let { parts -> parts[0].trim() to parts.getOrNull(1)?.trim() }
+                val display = alias?.takeIf { it.isNotBlank() } ?: target
+                val url = wikiToWebUrl(target)
+                val start = this.length
+                append(display)
+                val end = this.length
+                addLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = Color.White, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold))), start, end)
+            }
+            blockIdMatch -> {
+                append(blockIdMatch.groupValues[1])
+                withStyle(SpanStyle(color = Color(0xFFF59E0B), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)) {
+                    append("^" + blockIdMatch.groupValues[2])
+                }
+            }
+            inlineMathMatch -> {
+                append(unescapeMarkdown(inlineMathMatch.groupValues[1]))
+                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold, color = Color(0xFFE3E5E8))) {
+                    val rawMath = unescapeMarkdown(inlineMathMatch.groupValues[2])
+                    val prettyMath = prettifyInlineMath(rawMath)
+                    appendMathWithScripts(prettyMath.trim())
+                }
+            }
+            highlightMatch -> {
+                append(unescapeMarkdown(highlightMatch.groupValues[1]))
+                withStyle(SpanStyle(background = Color(0xFF2F3336), color = Color.White)) {
+                    append(unescapeMarkdown(highlightMatch.groupValues[2]))
+                }
+            }
+            tagMatch -> {
+                append(tagMatch.groupValues[1])
+                withStyle(SpanStyle(color = Color(0xFF949BA4))) {
+                    append("#" + tagMatch.groupValues[2])
+                }
+            }
+            footnoteRefMatch -> {
+                append(unescapeMarkdown(footnoteRefMatch.groupValues[1]))
+                withStyle(SpanStyle(color = Color(0xFF71767B), fontSize = 11.sp, baselineShift = BaselineShift.Superscript)) {
+                    append("[^" + unescapeMarkdown(footnoteRefMatch.groupValues[2]) + "]")
+                }
+            }
+        }
+        remaining = remaining.substring(firstMatch.range.last + 1)
     }
 }
 

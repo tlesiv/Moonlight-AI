@@ -105,8 +105,8 @@ fun CircleIconButton(
     modifier: Modifier = Modifier,
     tint: Color = Color.White,
     enabled: Boolean = true,
-    buttonSize: Dp = 36.dp, // Розмір зони кліку
-    iconSize: Dp = 20.dp    // Розмір іконки всередині
+    buttonSize: Dp = 36.dp, //zone
+    iconSize: Dp = 20.dp    // size of icon inside zone
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()

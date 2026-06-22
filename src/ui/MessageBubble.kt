@@ -83,7 +83,7 @@ fun MessageBubble(message: ChatMessage) {
                                 else Modifier.fillMaxWidth()
                             )
                     ) {
-                        // --- ВІДОБРАЖЕННЯ ФАЙЛІВ ---
+                        // FILES
                         if (message.attachmentPaths.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
@@ -192,7 +192,7 @@ fun MessageBubble(message: ChatMessage) {
                             }
                         }
 
-                        // --- ВІДОБРАЖЕННЯ ТЕКСТУ ---
+                            // TEXTS
                         if (message.text.isNotBlank()) {
                             val parts = message.text.split("```")
                             parts.forEachIndexed { index, part ->
@@ -266,7 +266,7 @@ fun MessageBubble(message: ChatMessage) {
 
                                                 is MarkdownElement.Table -> {
                                                     Surface(
-                                                        color = Color.Transparent, // Прозорий фон
+                                                        color = Color.Transparent,
                                                         shape = RoundedCornerShape(8.dp),
                                                         border = BorderStroke(1.dp, borderColor),
                                                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)

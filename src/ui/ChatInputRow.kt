@@ -325,7 +325,7 @@ fun ChatInputRow(
                         }
                     }
                     .onPreviewKeyEvent { event ->
-                        // Undo/Redo та інші комбінації клавіш
+                        // Undo/Redo
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Z && (event.isCtrlPressed || event.isMetaPressed)) {
                             if (undoStack.isNotEmpty()) {
                                 val lastState = undoStack.last()
@@ -351,7 +351,7 @@ fun ChatInputRow(
                             }
                         }
 
-                        // Enter та Shift + Enter
+                        // Enter, Shift + Enter
                         if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.type == KeyEventType.KeyDown) {
                             if (event.isShiftPressed) {
                                 val currentText = textFieldValue.text
@@ -397,7 +397,7 @@ fun ChatInputRow(
                         if (isLoading) {
                             MoonlightTypingIndicator()
                         } else {
-                            //---------КНОПКА ВИБОРУ МОДЕЛІ----------
+                            //Choose model dropdown
                             Box(contentAlignment = Alignment.Center) {
                                 val modelInteractionSource = remember { MutableInteractionSource() }
                                 val isModelHovered by modelInteractionSource.collectIsHoveredAsState()
@@ -449,12 +449,6 @@ fun ChatInputRow(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        //Крапка біля моделі
-//                                            Box(
-//                                                modifier = Modifier
-//                                                    .size(6.dp)
-//                                                  .background(if (menuExpanded || menuTransitionState.currentState || isModelHovered) Color.White else Color(0xFF949BA4), CircleShape)
-//                                            )
                                         Crossfade(
                                             targetState = selectedModel,
                                             animationSpec = tween(300)

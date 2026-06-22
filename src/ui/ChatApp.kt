@@ -252,7 +252,7 @@ fun ChatApp() {
                 Sidebar(
                     chats = sessions.sortedWith(
                         compareByDescending<ChatSession> { it.isPinned }
-                            .thenByDescending { it.updatedAt } // Спочатку закріплені, потім – найсвіжіші
+                            .thenByDescending { it.updatedAt }
                     ),
                     activeChatId = activeChatId,
                     onSelectChat = onSelectChat,
@@ -282,7 +282,7 @@ fun ChatApp() {
                 Crossfade(
                     targetState = currentActiveChat,
                     modifier = Modifier.weight(1f),
-                    animationSpec = tween(durationMillis = 500),//Анімація при зміні чатів(головний екран)
+                    animationSpec = tween(durationMillis = 500),//animation when switching between chats
                     label = "chat_transition"
                 ) { chat ->
                     if (chat != null) {
