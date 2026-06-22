@@ -81,7 +81,7 @@ fun Sidebar(
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(end = 12.dp) // Відступ для повзунка
+                modifier = Modifier.fillMaxSize().padding(end = 12.dp)
             ) {
                 items(items = chats, key = { it.id }) { session ->
                     val isActive = session.id == activeChatId
@@ -111,7 +111,7 @@ fun Sidebar(
                             .background(bg, RoundedCornerShape(16.dp))
                             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(16.dp))
                             .heightIn(min = 42.dp)
-                            .clickable {
+                            .clickable(enabled = editingChatId != session.id) {
                                 onSelectChat(session.id)
                                 onSetExpandedMenuChatId(null)
                                 onSetEditingChatId(null)
@@ -278,8 +278,8 @@ fun Sidebar(
 
             CompositionLocalProvider(
                 LocalScrollbarStyle provides defaultScrollbarStyle().copy(
-                    unhoverColor = Color(0xFF2F3336), // Колір у спокої
-                    hoverColor = Color(0xFF71767B),   // Колір при наведенні
+                    unhoverColor = Color(0xFF2F3336),
+                    hoverColor = Color(0xFF71767B),
                     shape = RoundedCornerShape(4.dp),
                     thickness = 6.dp
                 )
