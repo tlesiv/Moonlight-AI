@@ -265,6 +265,22 @@ fun Sidebar(
                                             onSetExpandedMenuChatId(null)
                                             scope.launch {
                                                 delay(300)
+
+                                                if (activeChatId == session.id) {
+                                                    val index = chats.indexOf(session)
+                                                    val nextChat = when {
+                                                        index < chats.size - 1 -> chats[index + 1]
+                                                        index > 0 -> chats[index - 1]
+                                                        else -> null
+                                                    }
+
+                                                    if (nextChat != null) {
+                                                        onSelectChat(nextChat.id)
+                                                    } else {
+                                                        onNewChat()
+                                                    }
+                                                }
+
                                                 onDeleteChat(session.id)
                                             }
                                         }
