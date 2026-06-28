@@ -2,6 +2,25 @@
 
 A modern, lightning-fast, and highly customizable desktop application for interacting with artificial intelligence using the **Gemini API** and **OpenRouter**. The interface is built entirely with **Jetpack Compose Desktop**, adhering to modern UI/UX guidelines and featuring a clean, modular architecture.
 
+## 📸 Sneak Peek
+
+### The Main Interface
+Complete with session history, markdown parsing, and multimodal file attachments.
+
+![Main Interface](src/resources/images/assets/main.jpg)
+
+### Advanced Math Rendering
+Native rendering of complex LaTeX formulas, perfect for integrals, differential equations, and calculus.
+
+![Math Rendering](src/resources/images/assets/math.jpg)
+
+### Multimodal File Analysis
+Seamlessly attach and analyze images, PDFs, and code files directly in the chat.
+
+![File Attachments](src/resources/images/assets/files.jpg)
+
+
+
 ## ⚡ Features
 
 - **⚡ Real-Time Streaming:** Fluid chunk-by-chunk text generation with a smooth typing indicator.
